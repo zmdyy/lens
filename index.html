@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>凸透镜成像 3D + 2D 联动仿真实验</title>
+<title>Geometric Optics · 凸透镜成像 3D + 2D 联动仿真实验</title>
 <style>
   :root{
     --bg:#050914;
@@ -83,7 +83,7 @@
 <div id="app">
   <header>
     <div class="logo">🔭</div>
-    <h1>凸透镜成像 3D + 2D 联动仿真实验<small>THIN-LENS · f = 1/[(n-1)·k·d] · 初中物理 · 八年级上册</small></h1>
+    <h1>Geometric Optics · 凸透镜成像 3D + 2D 联动仿真<small>THIN-LENS · 共享参数 P · 初中物理 · 八年级上册</small></h1>
     <div class="hdr-badges">
       <span class="badge live">● <b id="hSharp">清晰度 100%</b></span>
       <span class="badge" id="hFormula">v = u·f / (u−f)</span>
@@ -164,6 +164,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 /* ============ 共享物理参数（3D + 2D 唯一数据源） ============ */
 const P = {
@@ -232,9 +233,14 @@ $('bPlay').onclick=()=>{
 const holder=$('c3d');
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.15;
 holder.appendChild(renderer.domElement);
 const scene=new THREE.Scene();
 scene.fog=new THREE.FogExp2(0x050914,0.012);
+{const pmrem=new THREE.PMREMGenerator(renderer);
+ scene.environment=pmrem.fromScene(new RoomEnvironment(),0.04).texture;}
 const camera=new THREE.PerspectiveCamera(46,1,0.1,500);
 camera.position.set(2,16,44);
 const controls=new OrbitControls(camera,renderer.domElement);
@@ -281,11 +287,12 @@ function buildLens(){
   lensMesh=new THREE.Mesh(
     new THREE.SphereGeometry(1,64,48),
     new THREE.MeshPhysicalMaterial({
-      color:0x9fdcff, metalness:0, roughness:.06,
-      transmission:.92, thickness:2.4, ior:1.52,
-      transparent:true, opacity:.55,
-      emissive:0x0ea5e9, emissiveIntensity:.14,
-      clearcoat:1, clearcoatRoughness:.06, specularIntensity:1,
+      color:0xcff6ff, metalness:0, roughness:.02,
+      transmission:1, thickness:3.2, ior:1.52,
+      transparent:true, opacity:1,
+      attenuationColor:0x7dd3fc, attenuationDistance:8,
+      clearcoat:1, clearcoatRoughness:.04,
+      specularIntensity:1, envMapIntensity:1.35,
     }));
   lensMesh.scale.set(lensHalfThick(),LENS_R,LENS_R);
   lensGroup.add(lensMesh);
@@ -471,52 +478,69 @@ function updateImgArrow(){
   imgLink.computeLineDistances();
 }
 
-/* 3D 光线 */
+/* 3D 光线（复用 Line，避免每帧重建） */
 const rayColors=[0xfb7185,0xfde047,0x22d3ee,0xc084fc];
-let rayLines=[], rayDots=[];
-function clearRays(){rayLines.forEach(l=>scene.remove(l));rayDots.forEach(d=>scene.remove(d));rayLines=[];rayDots=[];}
-function rayPaths(){
-  // 返回每条光线在 x∈[-48,48] 的折线点（世界坐标，y 为绝对高度；光轴 y=9.6）
-  const u=P.objDist,f=P.focal;
-  const AX=9.6;
-  const y0=P.objH*1.6+1.15;      // 物顶相对光轴高度（箭头+火苗）
-  const s=WORLD/44, paths=[];
-  const xl=X(-u), xLens=0;       // 物体在左侧 -u*s
-  const H=7.2;
-  // ① 平行→焦点：物顶水平到透镜，再过像方焦点
-  {const yL=y0; const pts=[[xl,y0],[xLens,yL]];
-   if(f>0){const xr=X(-f); /*像方焦点在 +x? 注意 X() 以透镜为0右为正? X(cm)=-cm*s 左负右正？物体u>0应在左侧 x=-u*s */ }
-   // 统一：世界 x = -u*s 为物体，+v*s 为像。像方焦点 x=+f*s
-   const xF=f*s; const slope=(0-yL)/(xF-0);
-   pts.push([xF,0],[48, slope*(48-0)+yL]);
-   paths.push(pts);}
-  // ② 过光心：直线
-  {const slope=(0-y0)/(0-xl); paths.push([[xl,y0],[48, y0+slope*(48-xl)]]);}
-  // ③ 过物方焦点→平行：物顶→透镜交点使透过后平行
-  {const xFo=-f*s; const slope=(y0-0)/(xl-xFo); // 物顶与物方焦点连线斜率
-   const yL=0+slope*(0-xFo);
-   paths.push([[xl,y0],[xLens,yL],[48,yL]]);}
-  // ④ 过2F：物顶→物方2F连线交透镜，再按薄透镜偏折（数值追迹：用高斯公式求出射斜率）
-  {const x2F=-2*f*s; const slopeIn=(y0-0)/(xl-x2F);
-   const yL=0+slopeIn*(0-x2F);
-   // 薄透镜偏折：出射角 = 入射角 - y/f（近轴）。入射角≈atan(slopeIn)，换算到“每世界单位高度变化”
-   const thetaIn=Math.atan(slopeIn), thetaOut=thetaIn - Math.atan(yL/Math.max(1e-3,(f*s)));
-   const slopeOut=Math.tan(thetaOut);
-   paths.push([[xl,y0],[xLens,yL],[48, yL+slopeOut*48]]);}
-  // 裁剪到透镜高度与上下界
-  return paths.map(pts=>pts.map(([x,y])=>[THREE.MathUtils.clamp(x,-48,48),THREE.MathUtils.clamp(y+9.6,-2,22)]));
+const AX=9.6;
+function specialRaysCm(){
+  // 统一用 cm：物在 x=-u，透镜 x=0，像方正。高度相对光轴。
+  const u=P.objDist, f=P.focal, h=P.objH;
+  const img=lensImage();
+  const xo=-u, yo=h, xFar=46;
+  const yHit2F=()=>{const sl=(yo-0)/(xo-(-2*f)); return sl*(0-(-2*f));};
+  const yHitF =()=>{const sl=(yo-0)/(xo-(-f)); return sl*(0-(-f));};
+  const rays=[];
+  // ① 平行→像方焦点
+  {const fwd=[[xo,yo],[0,yo],[xFar, yo*(1-xFar/Math.max(f,1e-3))]];
+   const back=(img.kind==='virtual')?[[0,yo],[img.v,img.h]]:[];
+   rays.push({fwd,back});}
+  // ② 过光心
+  {const sl=(0-yo)/(0-xo);
+   const fwd=[[xo,yo],[xFar, yo+sl*(xFar-xo)]];
+   const back=(img.kind==='virtual')?[[0,0],[img.v,img.h]]:[];
+   rays.push({fwd,back});}
+  // ③ 过物方焦点→平行
+  {const yL=yHitF();
+   const fwd=[[xo,yo],[0,yL],[xFar,yL]];
+   const back=(img.kind==='virtual')?[[0,yL],[img.v,img.h]]:[];
+   rays.push({fwd,back});}
+  // ④ 过物方 2F，薄透镜偏折
+  {const yL=yHit2F();
+   const slIn=(yo-0)/(xo-(-2*f));
+   const thI=Math.atan(slIn), thO=thI-Math.atan(yL/Math.max(f,1e-3)), slO=Math.tan(thO);
+   const fwd=[[xo,yo],[0,yL],[xFar, yL+slO*xFar]];
+   const back=(img.kind==='virtual')?[[0,yL],[img.v,img.h]]:[];
+   rays.push({fwd,back});}
+  return rays;
+}
+function toWorld(pts){
+  const s=WORLD/44;
+  return pts.map(([xcm,ycm])=>new THREE.Vector3(xcm*s, AX+ycm*1.6, 0));
+}
+const rayFwd=[], rayBack=[], rayDots=[];
+for(let i=0;i<4;i++){
+  const fwd=new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color:rayColors[i],transparent:true,opacity:.95}));
+  const back=new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({color:rayColors[i],dashSize:.9,gapSize:.55,transparent:true,opacity:.85}));
+    const dot=new THREE.Mesh(new THREE.SphereGeometry(.28,10,10), new THREE.MeshBasicMaterial({color:rayColors[i]}));
+  dot.userData={pts:[],t:Math.random()};
+  scene.add(fwd,back,dot); rayFwd.push(fwd); rayBack.push(back); rayDots.push(dot);
+}
+function setPts(line, pts, dashed){
+  line.geometry.dispose();
+  line.geometry=new THREE.BufferGeometry().setFromPoints(pts);
+  if(dashed) line.computeLineDistances();
 }
 function buildRayLines(){
-  clearRays();
-  const paths=rayPaths();
-  paths.forEach((pts,i)=>{
-    if(!P.rays[i])return;
-    const v=pts.map(([x,y])=>new THREE.Vector3(x,y,0));
-    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(v),
-      new THREE.LineBasicMaterial({color:rayColors[i],transparent:true,opacity:.95}));
-    scene.add(line);rayLines.push(line);
-    const dot=new THREE.Mesh(new THREE.SphereGeometry(.3,10,10),new THREE.MeshBasicMaterial({color:rayColors[i]}));
-    dot.userData={pts:v,t:Math.random()};scene.add(dot);rayDots.push(dot);
+  const rs=specialRaysCm();
+  rs.forEach((r,i)=>{
+    const on=P.rays[i];
+    rayFwd[i].visible=on && r.fwd.length>1;
+    rayBack[i].visible=on && r.back.length>1;
+    rayDots[i].visible=on;
+    if(!on) return;
+    const fwd=toWorld(r.fwd);
+    setPts(rayFwd[i], fwd, false);
+    if(r.back.length>1) setPts(rayBack[i], toWorld(r.back), true);
+    rayDots[i].userData.pts=fwd;
   });
 }
 
@@ -531,8 +555,10 @@ function update3D(dt,t){
   updateImgArrow();
   // 光子流动
   rayDots.forEach(d=>{
+    const pts=d.userData.pts;
+    if(!pts||pts.length<2){d.visible=false;return;}
     d.userData.t+=dt*.35; if(d.userData.t>1)d.userData.t-=1;
-    const pts=d.userData.pts, ft=d.userData.t*(pts.length-1), k=Math.min(pts.length-2,Math.floor(ft)), a=ft-k;
+    const ft=d.userData.t*(pts.length-1), k=Math.min(pts.length-2,Math.floor(ft)), a=ft-k;
     d.position.lerpVectors(pts[k],pts[k+1],a);
   });
   drawScreenTexture();
@@ -626,51 +652,22 @@ function draw2D(){
   }else{
     drawImg(v,m*h,true);
   }
-  // ---- 四条特殊光线 ----
-  const yT=yTop;
-  const toPx=(wx,wy)=>[X2(wx),Y2(wy)]; // 世界cm转像素（wy 为相对光轴cm高度）
-  function trace(fn,color,on,dashed=false){
-    if(!on)return;
+  // ---- 四条特殊光线（与 3D 共用 specialRaysCm） ----
+  const toPx=(wx,wy)=>[X2(wx),Y2(wy)];
+  function strokePts(pts,color,dashed){
+    if(!pts||pts.length<2)return;
     ctx2.save();ctx2.strokeStyle=color;ctx2.lineWidth=2.2;ctx2.shadowColor=color;ctx2.shadowBlur=7;
     if(dashed)ctx2.setLineDash([6,5]);
     ctx2.beginPath();
-    const pts=fn();
     pts.forEach(([wx,wy],i)=>{const [px,py]=toPx(wx,wy);i?ctx2.lineTo(px,py):ctx2.moveTo(px,py);});
     ctx2.stroke();ctx2.restore();
   }
-  const xL=46; // 光线画到 ±46cm
-  // ① 平行→焦点
-  trace(()=>{
-    if(kind==='real')return [[xo,yo],[0,yo],[v,0],[xL,(0-yo)/(v-0)*(xL-0)+yo].slice(0,2)];
-    // 虚像：折射线外推反向交于虚像
-    const slope=(0-yo)/(f-0);
-    return [[xo,yo],[0,yo],[xL,yo+slope*xL]];
-  },C2.平行,P.rays[0]);
-  // ① 虚像反向虚线
-  if(kind==='virtual'&&P.rays[0])trace(()=>[[0,yo],[v,m*h]],C2.平行,true,true);
-  // ② 过光心
-  trace(()=>{
-    const sl=(0-yo)/(0-xo);
-    if(kind==='real')return [[xo,yo],[v,0],[xL,yo+sl*(xL-xo)]];
-    return [[xo,yo],[xL,yo+sl*(xL-xo)]];
-  },C2.光心,P.rays[1]);
-  if(kind==='virtual'&&P.rays[1])trace(()=>[[0,(yo+(0-yo)/(0-xo)*(0-xo))],[v,m*h]],C2.光心,true,true);
-  // ③ 过物方焦点→平行
-  trace(()=>{
-    const sl=(yo-0)/(xo-(-f));
-    const yL=0+sl*(0-(-f));
-    if(kind==='real')return [[xo,yo],[0,yL],[xL,yL]];
-    return [[xo,yo],[0,yL],[xL,yL]];
-  },C2.焦点,P.rays[2]);
-  if(kind==='virtual'&&P.rays[2])trace(()=>{const sl=(yo-0)/(xo-(-f));const yL=0+sl*(0-(-f));return [[0,yL],[v,m*h]];},C2.焦点,true,true);
-  // ④ 过物方2F
-  trace(()=>{
-    const sl=(yo-0)/(xo-(-2*f));
-    const yL=0+sl*(0-(-2*f));
-    const thI=Math.atan(sl), thO=thI-Math.atan(yL/f), slO=Math.tan(thO);
-    return [[xo,yo],[0,yL],[xL,yL+slO*xL]];
-  },C2['2F'],P.rays[3]);
-  if(kind==='virtual'&&P.rays[3])trace(()=>{const sl=(yo-0)/(xo-(-2*f));const yL=0+sl*(0-(-2*f));return [[0,yL],[v,m*h]];},C2['2F'],true,true);
+  const C2c=['#fb7185','#fde047','#22d3ee','#c084fc'];
+  specialRaysCm().forEach((r,i)=>{
+    if(!P.rays[i])return;
+    strokePts(r.fwd,C2c[i],false);
+    strokePts(r.back,C2c[i],true);
+  });
 
   // 光屏
   const xs=X2(P.screen);
@@ -721,7 +718,7 @@ function tick(){
     if(P.objDist<=6){P.objDist=6;P.autoDir=1;}
     if(P.objDist>=38){P.objDist=38;P.autoDir=-1;}
     $('sU').value=P.objDist;
-    if(Math.abs(P.objDist-P.focal)<0.12&&!tick._told){toast('经过焦点 F：成像性质即将反转');tick._told=true;setTimeout(()=>tick._told=false,3000);}
+    if(Math.abs(P.objDist-P.focal)<0.12&&!tick._told){toast('成像性质即将反转');tick._told=true;setTimeout(()=>tick._told=false,3000);}
   }
   // 光屏追像
   const {v,kind}=lensImage();
