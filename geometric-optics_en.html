@@ -280,13 +280,30 @@ const bench=new THREE.Mesh(new THREE.BoxGeometry(96,1.2,5),benchMat);
 bench.position.y=1.6; scene.add(bench);
 const rail=new THREE.Mesh(new THREE.BoxGeometry(96,.28,1.1),new THREE.MeshStandardMaterial({color:0x98a2b3,roughness:.4,metalness:.25}));
 rail.position.y=2.35; scene.add(rail);
-/* 刻度 */
-{const c=document.createElement('canvas');c.width=2048;c.height=64;const x=c.getContext('2d');
-x.fillStyle='#eef0f4';x.fillRect(0,0,2048,64);x.fillStyle='#3d5ba9';x.font='22px sans-serif';x.textAlign='center';
-for(let cm=0;cm<=88;cm+=1){const px=cm/88*2048;const big=cm%5===0;x.fillRect(px,big?6:22,2,big?30:14);if(big)x.fillText(cm,px,60);}
-const tex=new THREE.CanvasTexture(c);
-const ruler=new THREE.Mesh(new THREE.PlaneGeometry(94,2.6),new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:.9}));
-ruler.rotation.x=-Math.PI/2;ruler.position.set(0,2.26,3.1);scene.add(ruler);}
+/* PhET 风格黄色尺子：尺面朝向用户（+z），0 在透镜 */
+{const c=document.createElement('canvas'); c.width=2048; c.height=192;
+ const g=c.getContext('2d');
+ g.fillStyle='#f0c000'; g.fillRect(0,0,2048,192);
+ g.fillStyle='#c49200'; g.fillRect(0,0,2048,10); g.fillRect(0,182,2048,10);
+ g.fillStyle='#a07800'; g.fillRect(0,0,8,192); g.fillRect(2040,0,8,192);
+ g.fillStyle='#1a1a1a'; g.font='bold 32px sans-serif'; g.textAlign='center';
+ const span=90;
+ for(let cm=-45; cm<=45; cm++){
+   const px=(cm+45)/span*2048;
+   const a=Math.abs(cm), mid=a%10===0, big=a%5===0;
+   const th=mid?4:2, h=mid?78:(big?52:24);
+   g.fillRect(px-th/2, 14, th, h);
+   g.fillRect(px-th/2, 178-h, th, h);
+   if(mid){ g.fillText(String(a), px, 118); }
+ }
+ g.font='bold 26px sans-serif'; g.fillText('cm', 70, 118);
+ const tex=new THREE.CanvasTexture(c); tex.colorSpace=THREE.SRGBColorSpace; tex.anisotropy=8;
+ const face=new THREE.MeshBasicMaterial({map:tex});
+ const edge=new THREE.MeshStandardMaterial({color:0xc49200, roughness:.55, metalness:.05});
+ const ruler=new THREE.Mesh(new THREE.BoxGeometry(90, 2.2, .32), [edge,edge,edge,edge,face,face]);
+ ruler.position.set(0, 3.4, 2.88);
+ ruler.rotation.x=-0.12;
+ scene.add(ruler);}
 
 /* 透镜组：标准圆形双凸透镜（玻璃质感，厚度可调） */
 const lensGroup=new THREE.Group(); scene.add(lensGroup);
