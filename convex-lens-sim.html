@@ -280,29 +280,35 @@ const bench=new THREE.Mesh(new THREE.BoxGeometry(96,1.2,5),benchMat);
 bench.position.y=1.6; scene.add(bench);
 const rail=new THREE.Mesh(new THREE.BoxGeometry(96,.28,1.1),new THREE.MeshStandardMaterial({color:0x98a2b3,roughness:.4,metalness:.25}));
 rail.position.y=2.35; scene.add(rail);
-/* PhET 风格黄色尺子：尺面朝向用户（+z），0 在透镜 */
-{const c=document.createElement('canvas'); c.width=2048; c.height=192;
+/* PhET 黄色尺子：浅黄底、黑边、上沿刻度、数字清晰不拉伸 */
+{const L=90, H=4.8;
+ const Wpx=4096, Hpx=219; // 与 90×4.8 同比例，避免数字被拉扁/拉糊
+ const c=document.createElement('canvas'); c.width=Wpx; c.height=Hpx;
  const g=c.getContext('2d');
- g.fillStyle='#f0c000'; g.fillRect(0,0,2048,192);
- g.fillStyle='#c49200'; g.fillRect(0,0,2048,10); g.fillRect(0,182,2048,10);
- g.fillStyle='#a07800'; g.fillRect(0,0,8,192); g.fillRect(2040,0,8,192);
- g.fillStyle='#1a1a1a'; g.font='bold 32px sans-serif'; g.textAlign='center';
- const span=90;
- for(let cm=-45; cm<=45; cm++){
-   const px=(cm+45)/span*2048;
-   const a=Math.abs(cm), mid=a%10===0, big=a%5===0;
-   const th=mid?4:2, h=mid?78:(big?52:24);
-   g.fillRect(px-th/2, 14, th, h);
-   g.fillRect(px-th/2, 178-h, th, h);
-   if(mid){ g.fillText(String(a), px, 118); }
+ g.fillStyle='#ead889'; g.fillRect(0,0,Wpx,Hpx);
+ g.strokeStyle='#2a2a2a'; g.lineWidth=8; g.strokeRect(4,4,Wpx-8,Hpx-8);
+ const pad=28, inner=Wpx-pad*2, xOf=cm=>pad+cm/L*inner;
+ g.fillStyle='#2a2a2a';
+ for(let cm=0; cm<=L; cm++){
+   const x=Math.round(xOf(cm));
+   const long=cm%10===0, mid=cm%5===0;
+   const h=long?Math.round(Hpx*0.42):mid?Math.round(Hpx*0.28):Math.round(Hpx*0.16);
+   g.fillRect(x-(long?2:1), 10, long?4:2, h);
  }
- g.font='bold 26px sans-serif'; g.fillText('cm', 70, 118);
- const tex=new THREE.CanvasTexture(c); tex.colorSpace=THREE.SRGBColorSpace; tex.anisotropy=8;
+ g.font='32px Helvetica, Arial, sans-serif';
+ g.textAlign='center'; g.textBaseline='middle';
+ for(let cm=20; cm<L; cm+=20) g.fillText(String(cm), xOf(cm), Hpx*0.72);
+ g.textAlign='right'; g.fillText('cm', Wpx-22, Hpx*0.72);
+ const tex=new THREE.CanvasTexture(c);
+ tex.colorSpace=THREE.SRGBColorSpace;
+ tex.generateMipmaps=false;
+ tex.minFilter=THREE.LinearFilter;
+ tex.magFilter=THREE.LinearFilter;
+ tex.anisotropy=1;
  const face=new THREE.MeshBasicMaterial({map:tex});
- const edge=new THREE.MeshStandardMaterial({color:0xc49200, roughness:.55, metalness:.05});
- const ruler=new THREE.Mesh(new THREE.BoxGeometry(90, 2.2, .32), [edge,edge,edge,edge,face,face]);
- ruler.position.set(0, 3.4, 2.88);
- ruler.rotation.x=-0.12;
+ const edge=new THREE.MeshBasicMaterial({color:0x2a2a2a});
+ const ruler=new THREE.Mesh(new THREE.BoxGeometry(L, H, .22), [edge,edge,edge,edge,face,face]);
+ ruler.position.set(0, 2.2+H/2, 2.92);
  scene.add(ruler);}
 
 /* 透镜组：标准圆形双凸透镜（玻璃质感，厚度可调） */
