@@ -573,48 +573,58 @@ function setPts(line, pts, dashed){
   if(dashed) line.computeLineDistances();
 }
 
-/* 密集会聚光束：物点阵 × 透镜孔径采样，薄透镜会聚到像点/光屏 */
-const BUNDLE_MAX=260;
-const bundlePos=new Float32Array(BUNDLE_MAX*4*3);
+/* 密集会聚光束：物面=许多点光源，向四周发散打到透镜前表面，出射后会聚到像点/光屏 */
+const BUNDLE_MAX=650;
+const bundlePos=new Float32Array(BUNDLE_MAX*6*3);
 const bundleGeo=new THREE.BufferGeometry();
 bundleGeo.setAttribute('position', new THREE.BufferAttribute(bundlePos,3));
 bundleGeo.setDrawRange(0,0);
 const bundle=new THREE.LineSegments(bundleGeo, new THREE.LineBasicMaterial({
-  color:0xf59e0b, transparent:true, opacity:.32, depthWrite:false
+  color:0xf5b942, transparent:true, opacity:.22, depthWrite:false
 }));
 scene.add(bundle);
 function updateBundle(){
   const img=lensImage();
-  const s=WORLD/44, xO=X(-P.objDist), xL=0, R=LENS_R*0.9;
-  const nY=7, objYs=[];
-  for(let k=0;k<nY;k++) objYs.push(P.objH+(k/(nY-1)-0.5)*OBJ_H*0.82);
-  const lensPts=[[0,0]];
-  [[0.33,8],[0.58,10],[0.84,14]].forEach(([rr,n])=>{
-    for(let a=0;a<n;a++){const th=a/n*Math.PI*2; lensPts.push([rr*R*Math.sin(th), rr*R*Math.cos(th)]); }
+  const s=WORLD/44, xO=X(-P.objDist);
+  const halfT=lensHalfThick(), R=LENS_R*0.93;
+  const m=(img.kind==='none'||!isFinite(img.m))?1:img.m;
+  const xImg=(img.kind==='none'||!isFinite(img.v))?40*s:X(img.v);
+  const xScr=P.screen*s;
+  const objPts=[];
+  const nY=4, nZ=3;
+  for(let iy=0;iy<nY;iy++){
+    const yo=P.objH+(iy/(nY-1)-0.5)*OBJ_H*0.78;
+    for(let iz=0;iz<nZ;iz++){
+      const zo=(iz/(nZ-1)-0.5)*OBJ_W*0.7;
+      objPts.push({y:AX+yo, z:zo, yi:AX+yo*m, zi:zo*m});
+    }
+  }
+  const front=[];
+  [[0.28,8],[0.55,12],[0.82,16],[0.97,18]].forEach(([rr,n])=>{
+    for(let a=0;a<n;a++){
+      const th=(a+0.15)/n*Math.PI*2;
+      const y=rr*R*Math.sin(th), z=rr*R*Math.cos(th);
+      const sag=Math.sqrt(Math.max(0.12, 1-(y*y+z*z)/(LENS_R*LENS_R)));
+      front.push({y:AX+y, z, xf:-halfT*sag, xb:halfT*sag});
+    }
   });
   let v=0;
   const put=(x,y,z)=>{ if(v<bundlePos.length/3){ bundlePos[v*3]=x; bundlePos[v*3+1]=y; bundlePos[v*3+2]=z; v++; } };
-  const m = (img.kind==='none'||!isFinite(img.m))?1:img.m;
-  const xImg = (img.kind==='none'||!isFinite(img.v))?40*s:X(img.v);
-  for(const yo of objYs){
-    const yObj=AX+yo, zObj=0;
-    const yImg=AX+yo*m;
-    for(const [ly,lz] of lensPts){
-      if(v/4>=BUNDLE_MAX) break;
-      const yHit=AX+ly, zHit=lz;
-      put(xO,yObj,zObj); put(xL,yHit,zHit);
-      put(xL,yHit,zHit);
+  for(const p of objPts){
+    for(const f of front){
+      if(v/6>=BUNDLE_MAX) break;
+      put(xO, p.y, p.z); put(f.xf, f.y, f.z);          // 物点 → 前表面（发散）
+      put(f.xf, f.y, f.z); put(f.xb, f.y, f.z);          // 穿过透镜
+      put(f.xb, f.y, f.z);
       if(img.kind==='real' && isFinite(img.v)){
-        const xEnd=X(Math.min(44, Math.max(img.v, P.screen)+3));
-        const t=(xEnd-0)/(xImg-0||1e-3);
-        put(xEnd, yHit+(yImg-yHit)*t, zHit+(0-zHit)*t);
+        const xEnd=xImg;
+        put(xEnd, p.yi, p.zi);                           // 出射后会聚到像点（光屏追像时即在屏上）
       }else if(img.kind==='virtual' && isFinite(img.v)){
-        const xEnd=40*s;
-        const dx=0-xImg, dy=yHit-yImg, dz=zHit-0;
-        const t=(xEnd-0)/(dx||1e-3);
-        put(xEnd, yHit+dy*t, zHit+dz*t);
+        const xEnd=40*s, dx=f.xb-xImg, dy=f.y-p.yi, dz=f.z-p.zi;
+        const t=(xEnd-f.xb)/(dx||1e-3);
+        put(xEnd, f.y+dy*t, f.z+dz*t);
       }else{
-        put(40*s, yHit, zHit);
+        put(40*s, f.y, f.z);
       }
     }
   }
@@ -702,14 +712,26 @@ function draw2D(){
     ctx2.beginPath();ctx2.arc(x,ax,6,0,7);ctx2.fill();ctx2.stroke();
     ctx2.fillStyle='#344054';ctx2.fillText(t,x,ax+22);
   });
-  // 透镜：PhET 紫蓝双凸
-  const lt=P.thick*pxPerCm*0.7+6, lh=H*0.34;
+  // 透镜：双凸，厚度变化夸张可见（d 越大越鼓）
+  const tNorm=(P.thick-0.3)/1.5;
+  const lt=14+tNorm*Math.min(W*0.11, 56);
+  const lh=H*0.36;
   ctx2.save();
-  ctx2.fillStyle='#c5c9d6';ctx2.strokeStyle='#6b7280';ctx2.lineWidth=2.2;
+  const lg=ctx2.createLinearGradient(cx-lt,0,cx+lt,0);
+  lg.addColorStop(0,'rgba(180,190,210,.15)');
+  lg.addColorStop(.5,'rgba(170,185,210,.7)');
+  lg.addColorStop(1,'rgba(180,190,210,.15)');
+  ctx2.fillStyle=lg; ctx2.strokeStyle='#4b5563'; ctx2.lineWidth=2.4;
   ctx2.beginPath();
-  ctx2.moveTo(cx,ax-lh);ctx2.quadraticCurveTo(cx+lt,ax,cx,ax+lh);ctx2.quadraticCurveTo(cx-lt,ax,cx,ax-lh);
-  ctx2.fill();ctx2.stroke();
-  ctx2.fillStyle='#3d5ba9';ctx2.fillText('d='+P.thick.toFixed(2)+'  f='+f.toFixed(1),cx,ax-lh-10);
+  ctx2.moveTo(cx, ax-lh);
+  ctx2.bezierCurveTo(cx+lt, ax-lh*0.35, cx+lt, ax+lh*0.35, cx, ax+lh);
+  ctx2.bezierCurveTo(cx-lt, ax+lh*0.35, cx-lt, ax-lh*0.35, cx, ax-lh);
+  ctx2.closePath(); ctx2.fill(); ctx2.stroke();
+  // 中心厚度标注
+  ctx2.strokeStyle='#1d4ed8'; ctx2.lineWidth=1.5; ctx2.setLineDash([]);
+  ctx2.beginPath(); ctx2.moveTo(cx-lt*0.92, ax); ctx2.lineTo(cx+lt*0.92, ax); ctx2.stroke();
+  ctx2.fillStyle='#1d4ed8'; ctx2.font='bold 12px sans-serif';
+  ctx2.fillText(`d=${P.thick.toFixed(2)} cm  f=${f.toFixed(1)} cm`, cx, ax-lh-12);
   ctx2.restore();
 
   const OBJ2=4.4;
