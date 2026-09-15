@@ -685,7 +685,7 @@ function buildRayLines(){
     if(sp){
       placeRayArrow(rayArrIn[i], sp.inc[0], sp.inc[1], 0.62);
       const emLen=sp.em[0].distanceTo(sp.em[1]);
-      placeRayArrow(rayArrOut[i], sp.em[0], sp.em[1], emLen>18? Math.min(0.45, 10/emLen):0.38);
+      placeRayArrow(rayArrOut[i], sp.em[0], sp.em[1], Math.min(0.42, 8/Math.max(emLen,1e-3)));
     }
   });
   updateBundle();
@@ -811,7 +811,7 @@ function draw2D(){
     const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy);
     if(len<14) return;
     const x=x1+dx*t, y=y1+dy*t, ang=Math.atan2(dy,dx);
-    const sz=Math.max(8, Math.min(13, pxPerCm*1.15));
+    const sz=Math.max(9, Math.min(14, pxPerCm*1.35));
     ctx2.save();
     ctx2.translate(x,y); ctx2.rotate(ang);
     ctx2.fillStyle=color; ctx2.strokeStyle='#1f2933'; ctx2.lineWidth=1;
@@ -845,12 +845,10 @@ function draw2D(){
     if(!withArrows) return;
     segsAcrossLens(pts).forEach(([a,b])=>{
       const [x1,y1]=toPx(a[0],a[1]), [x2,y2]=toPx(b[0],b[1]);
+      const dxCm=Math.abs(b[0]-a[0]);
       const midX=(a[0]+b[0])/2;
-      if(midX< -0.05) arrowAt(x1,y1,x2,y2,color,0.62);
-      else if(midX> 0.05){
-        const len=Math.hypot(x2-x1,y2-y1);
-        arrowAt(x1,y1,x2,y2,color, len>160? Math.min(0.42, 90/len):0.38);
-      }
+      if(midX< -0.05) arrowAt(x1,y1,x2,y2,color, dxCm<1?0.55:1-Math.min(0.45,7/dxCm));
+      else if(midX> 0.05) arrowAt(x1,y1,x2,y2,color, Math.min(0.42, 7/Math.max(dxCm,1e-3)));
     });
   }
   const C2c=['#e11d48','#ca8a04','#0ea5e9','#7c3aed'];
