@@ -100,7 +100,7 @@
         <div id="c3d"></div>
       </div>
       <div class="stage" id="stage2d">
-        <div class="stage-label"><span>2D 平面光路图 · CANVAS</span><em>四条特殊光线 · 虚像用虚线</em></div>
+        <div class="stage-label"><span>2D 平面光路图 · CANVAS</span><em>箭头表示物体 · 与 3D 共享参数</em></div>
         <div class="phet-bar">
           <select id="objType" title="物体类型">
             <option value="pencil">✏️ Pencil 铅笔</option>
@@ -125,7 +125,7 @@
           <input id="sF" type="range" min="5" max="18" step="0.1" value="10" title="直接微调焦距会反推等效厚度"></div>
         <div class="row"><label>光屏位置 v₀（透镜→光屏）<output id="oS">16.7 cm</output></label>
           <input id="sS" type="range" min="4" max="80" step="0.1" value="16.7"></div>
-        <div class="hint">h 是物体中心到主光轴的垂直距离（上正下负），不改变物体本身大小。像在光屏<strong>朝向透镜的一面</strong>承接。透镜越厚、折光越强：<b>f ≈ 14 / (0.4+d)</b>。</div>
+        <div class="hint">h 是物体中心到主光轴的垂直距离（上正下负）。<b>2D 用一根箭头表示物体</b>（长度=h），3D 仍显示所选实物，二者共用同一套 u、h、f、v。像在光屏<strong>朝向透镜的一面</strong>承接。透镜越厚、折光越强：<b>f ≈ 14 / (0.4+d)</b>。</div>
       </section>
 
       <section class="glass">
@@ -567,12 +567,21 @@ function toWorld(pts){
   return pts.map(([xcm,ycm])=>new THREE.Vector3(xcm*s, AX+ycm, 0));
 }
 const rayFwd=[], rayBack=[], rayDots=[], rayArrIn=[], rayArrOut=[];
-const _arrY=new THREE.Vector3(0,1,0), _arrD=new THREE.Vector3();
+const _arrX=new THREE.Vector3(1,0,0), _arrD=new THREE.Vector3();
 function makeRayArrow(col){
-  return new THREE.Mesh(
-    new THREE.ConeGeometry(.32,1.05,10),
-    new THREE.MeshBasicMaterial({color:col})
+  // 落在光路平面上的扁平箭头，侧视/正视都像课本上的方向三角
+  const s=new THREE.Shape();
+  s.moveTo(2.05,0);
+  s.lineTo(-1.15,0.92);
+  s.lineTo(-0.5,0);
+  s.lineTo(-1.15,-0.92);
+  s.closePath();
+  const mesh=new THREE.Mesh(
+    new THREE.ShapeGeometry(s),
+    new THREE.MeshBasicMaterial({color:col, side:THREE.DoubleSide, depthTest:true, depthWrite:false})
   );
+  mesh.renderOrder=8; mesh.frustumCulled=false;
+  return mesh;
 }
 function placeRayArrow(mesh, from, to, t){
   if(!from||!to){ mesh.visible=false; return; }
@@ -581,7 +590,8 @@ function placeRayArrow(mesh, from, to, t){
   if(len<0.55){ mesh.visible=false; return; }
   _arrD.multiplyScalar(1/len);
   mesh.position.lerpVectors(from, to, t);
-  mesh.quaternion.setFromUnitVectors(_arrY, _arrD);
+  mesh.position.z+=0.12; // 略抬向镜头，避免与光线 z-fighting
+  mesh.quaternion.setFromUnitVectors(_arrX, _arrD);
   mesh.visible=true;
 }
 function lensSplit(pts){
@@ -683,9 +693,9 @@ function buildRayLines(){
     rayDots[i].userData.pts=fwd;
     const sp=lensSplit(fwd);
     if(sp){
-      placeRayArrow(rayArrIn[i], sp.inc[0], sp.inc[1], 0.62);
+      placeRayArrow(rayArrIn[i], sp.inc[0], sp.inc[1], 0.58);
       const emLen=sp.em[0].distanceTo(sp.em[1]);
-      placeRayArrow(rayArrOut[i], sp.em[0], sp.em[1], Math.min(0.42, 8/Math.max(emLen,1e-3)));
+      placeRayArrow(rayArrOut[i], sp.em[0], sp.em[1], Math.min(0.38, 9/Math.max(emLen,1e-3)));
     }
   });
   updateBundle();
@@ -746,7 +756,7 @@ function draw2D(){
   let xR=Math.max(P.screen, 2*f, rayEndX(), 18)+12;
   if(kind==='virtual' && isFinite(v)) xL=Math.min(xL, v-12);
   const mag= (kind!=='none' && isFinite(m)) ? Math.abs(m) : 1;
-  const yNeed=Math.max(LENS_R+3, Math.abs(h)+OBJ_H*0.65, mag*Math.abs(h)+OBJ_H*0.45*Math.min(mag,2.8), 14);
+  const yNeed=Math.max(LENS_R+3, Math.abs(h)+5, mag*Math.abs(h)+5, 14);
   const pxPerCm=Math.min((W-40)/(xR-xL), (H-72)/(2*yNeed));
   const ax=H*0.50;
   const X2=cm=>20+(cm-xL)*pxPerCm;
@@ -781,45 +791,20 @@ function draw2D(){
   ctx2.fillText(`d=${P.thick.toFixed(2)} cm  f=${f.toFixed(1)} cm`, cx, ax-ry-12);
   ctx2.restore();
 
-  const OBJ2=4.4;
-  function drawFramed(xc, yOff, flip, label, virtual){
-    const hpx=OBJ2*pxPerCm;
-    const wpx=hpx*0.62;
-    const cy=Y2(yOff);
-    const top=cy-hpx/2;
-    ctx2.save();
-    if(virtual) ctx2.globalAlpha=.72;
-    ctx2.fillStyle='#bae6fd'; ctx2.strokeStyle='#64748b'; ctx2.lineWidth=Math.max(4, Math.min(10, pxPerCm*1.4));
-    ctx2.fillRect(xc-wpx/2,top,wpx,hpx);
-    ctx2.strokeRect(xc-wpx/2,top,wpx,hpx);
-    drawFigure(ctx2, xc, cy, hpx*0.78, flip);
-    ctx2.restore();
-    ctx2.fillStyle='#344054'; ctx2.font='12px sans-serif';
-    ctx2.fillText(label, xc, top+hpx+16);
-  }
-  drawFramed(X2(-u), h, false, `u=${u.toFixed(1)}  h=${h.toFixed(1)}`, false);
-  if(kind==='none'){
-    ctx2.fillStyle='#b54708';ctx2.font='bold 14px sans-serif';ctx2.fillText('u = f · 出射平行光 · 不成像',W/2,H-16);
-  }else if(kind==='real'){
-    drawFramed(X2(v), m*h, true, `v=${v.toFixed(1)}  h'=${(m*h).toFixed(1)}`, false);
-  }else{
-    drawFramed(X2(v), m*h, false, `虚像 h'=${(m*h).toFixed(1)}`, true);
-  }
-
   const toPx=(wx,wy)=>[X2(wx),Y2(wy)];
   function arrowAt(x1,y1,x2,y2,color,t){
     const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy);
-    if(len<14) return;
+    if(len<16) return;
     const x=x1+dx*t, y=y1+dy*t, ang=Math.atan2(dy,dx);
-    const sz=Math.max(9, Math.min(14, pxPerCm*1.35));
+    const sz=Math.max(13, Math.min(20, pxPerCm*2.0));
     ctx2.save();
     ctx2.translate(x,y); ctx2.rotate(ang);
-    ctx2.fillStyle=color; ctx2.strokeStyle='#1f2933'; ctx2.lineWidth=1;
+    ctx2.fillStyle=color; ctx2.strokeStyle='#1f2933'; ctx2.lineWidth=1.2;
     ctx2.beginPath();
     ctx2.moveTo(sz,0);
-    ctx2.lineTo(-sz*0.72, sz*0.48);
-    ctx2.lineTo(-sz*0.28, 0);
-    ctx2.lineTo(-sz*0.72, -sz*0.48);
+    ctx2.lineTo(-sz*0.78, sz*0.52);
+    ctx2.lineTo(-sz*0.32, 0);
+    ctx2.lineTo(-sz*0.78, -sz*0.52);
     ctx2.closePath(); ctx2.fill(); ctx2.stroke();
     ctx2.restore();
   }
@@ -837,7 +822,7 @@ function draw2D(){
   }
   function strokePts(pts,color,dashed,withArrows){
     if(!pts||pts.length<2)return;
-    ctx2.save();ctx2.strokeStyle=color;ctx2.lineWidth=2;ctx2.lineJoin='round';ctx2.lineCap='round';
+    ctx2.save();ctx2.strokeStyle=color;ctx2.lineWidth=2.6;ctx2.lineJoin='round';ctx2.lineCap='round';
     if(dashed)ctx2.setLineDash([6,5]);
     ctx2.beginPath();
     pts.forEach(([wx,wy],i)=>{const [px,py]=toPx(wx,wy);i?ctx2.lineTo(px,py):ctx2.moveTo(px,py);});
@@ -847,16 +832,60 @@ function draw2D(){
       const [x1,y1]=toPx(a[0],a[1]), [x2,y2]=toPx(b[0],b[1]);
       const dxCm=Math.abs(b[0]-a[0]);
       const midX=(a[0]+b[0])/2;
-      if(midX< -0.05) arrowAt(x1,y1,x2,y2,color, dxCm<1?0.55:1-Math.min(0.45,7/dxCm));
-      else if(midX> 0.05) arrowAt(x1,y1,x2,y2,color, Math.min(0.42, 7/Math.max(dxCm,1e-3)));
+      if(midX< -0.05) arrowAt(x1,y1,x2,y2,color, dxCm<1?0.55:1-Math.min(0.42,8/dxCm));
+      else if(midX> 0.05) arrowAt(x1,y1,x2,y2,color, Math.min(0.36, 8/Math.max(dxCm,1e-3)));
     });
   }
   const C2c=['#e11d48','#ca8a04','#0ea5e9','#7c3aed'];
   specialRaysCm().forEach((r,i)=>{
     if(!P.rays[i])return;
     strokePts(r.fwd,C2c[i],false,true);
-    strokePts(r.back,C2c[i],true,false);
+    strokePts(r.back,C2c[i],true,true);
   });
+
+  // 课本式物体：一根从主光轴指向物高 h 的箭头（与 3D 共享 u、h；3D 仍用画框实物）
+  function drawObjArrow(xCm, yTip, color, title, sub, virtual){
+    const x=X2(xCm), y0=Y2(0), y1=Y2(yTip);
+    const len=Math.abs(y1-y0);
+    ctx2.save();
+    if(virtual) ctx2.globalAlpha=.78;
+    if(len<6){
+      ctx2.fillStyle=color;
+      ctx2.beginPath(); ctx2.arc(x,y0,5,0,7); ctx2.fill();
+    }else{
+      const head=Math.max(12, Math.min(20, len*0.28));
+      const towardBase=y0>y1?1:-1; // 从箭头尖端回到光轴（canvas y 向下为正）
+      ctx2.strokeStyle=color; ctx2.fillStyle=color;
+      ctx2.lineWidth=Math.max(3.6, pxPerCm*0.55);
+      ctx2.lineCap='butt'; ctx2.lineJoin='round';
+      ctx2.setLineDash(virtual?[7,5]:[]);
+      ctx2.beginPath();
+      ctx2.moveTo(x, y0);
+      ctx2.lineTo(x, y1 + towardBase*head*0.92);
+      ctx2.stroke();
+      ctx2.setLineDash([]);
+      ctx2.beginPath();
+      ctx2.moveTo(x, y1);
+      ctx2.lineTo(x-head*0.58, y1 + towardBase*head);
+      ctx2.lineTo(x+head*0.58, y1 + towardBase*head);
+      ctx2.closePath(); ctx2.fill();
+    }
+    ctx2.restore();
+    ctx2.fillStyle='#344054'; ctx2.font='12px sans-serif'; ctx2.textAlign='center';
+    const above=yTip>=0;
+    ctx2.fillText(title, x, above? Math.min(y0,y1)-16 : Math.max(y0,y1)+16);
+    ctx2.fillStyle='#667085'; ctx2.font='11px sans-serif';
+    ctx2.fillText(sub, x, above? Math.min(y0,y1)-3 : Math.max(y0,y1)+30);
+  }
+  drawObjArrow(-u, h, '#6d28d9', '物体', `u=${u.toFixed(1)}  h=${h.toFixed(1)}`, false);
+  if(kind==='none'){
+    ctx2.fillStyle='#b54708';ctx2.font='bold 14px sans-serif';ctx2.textAlign='center';
+    ctx2.fillText('u = f · 出射平行光 · 不成像',W/2,H-16);
+  }else if(kind==='real'){
+    drawObjArrow(v, m*h, '#7c3aed', '实像', `v=${v.toFixed(1)}  h'=${(m*h).toFixed(1)}`, false);
+  }else{
+    drawObjArrow(v, m*h, '#7c3aed', '虚像', `h'=${(m*h).toFixed(1)}`, true);
+  }
 
   // 光屏框
   const xs=X2(P.screen);
