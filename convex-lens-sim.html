@@ -473,50 +473,6 @@ function buildMarks(){
 }
 buildMarks();
 
-/* 3D 像指示箭头：悬浮在像距处，直观显示正立/倒立、放大/缩小 */
-const imgGroup=new THREE.Group(); scene.add(imgGroup);
-const imgMat=new THREE.MeshBasicMaterial({color:0x4ade80,transparent:true,opacity:.55,depthWrite:false});
-const imgShaft=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,1,12),imgMat);
-const imgTip=new THREE.Mesh(new THREE.ConeGeometry(.6,1.1,14),imgMat);
-const imgTag=labelSprite('实像','#4ade80');
-imgTag.scale.set(7,2.6,1);
-imgGroup.add(imgShaft,imgTip,imgTag);
-const linkGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
-const imgLink=new THREE.Line(linkGeo,new THREE.LineDashedMaterial({color:0x4ade80,dashSize:.7,gapSize:.5,transparent:true,opacity:.7}));
-scene.add(imgLink);
-let imgTagCache='';
-function setImgTag(txt,color){
-  const key=txt+color; if(key===imgTagCache)return; imgTagCache=key;
-  const c=document.createElement('canvas');c.width=256;c.height=64;const g=c.getContext('2d');
-  g.fillStyle='rgba(255,255,255,.94)';g.beginPath();g.roundRect(6,6,244,52,12);g.fill();
-  g.strokeStyle=color;g.lineWidth=2;g.stroke();g.fillStyle=color;
-  g.font='bold 26px sans-serif';g.textAlign='center';g.fillText(txt,128,43);
-  imgTag.material.map?.dispose();imgTag.material.map=new THREE.CanvasTexture(c);imgTag.material.needsUpdate=true;
-}
-function updateImgArrow(){
-  const {v,m,kind}=lensImage();
-  if(kind==='none'||!isFinite(v)||Math.abs(v)>46){imgGroup.visible=false;imgLink.visible=false;return;}
-  imgGroup.visible=true;imgLink.visible=true;
-  const Hh=THREE.MathUtils.clamp(Math.abs(m)*OBJ_H,1,13);
-  const col=kind==='real'?'#4ade80':'#c4b5fd';
-  imgMat.color.set(col); imgLink.material.color.set(col);
-  const shaftH=Math.max(.3,Hh-1.1);
-  imgShaft.scale.y=shaftH;
-  const tipS=THREE.MathUtils.clamp(Hh/5,.45,1.7);
-  imgTip.scale.setScalar(tipS);
-  const yOff=isFinite(m)?m*P.objH:0;
-  const dir=kind==='real'?-1:1;
-  imgGroup.position.set(X(v),AX+yOff,3.6);
-  imgShaft.position.set(0,dir*shaftH/2,0);
-  imgTip.position.set(0,dir*(shaftH+0.55*tipS),0);
-  imgTip.rotation.z=kind==='real'?Math.PI:0;
-  imgTag.position.set(0,dir*(Hh/2+2.8),0);
-  setImgTag(kind==='real'?'实像 · 倒立':'虚像 · 正立',col);
-  const p=linkGeo.attributes.position;
-  p.setXYZ(0,X(v),AX+yOff,3.6);p.setXYZ(1,X(v),AX,0);p.needsUpdate=true;
-  imgLink.computeLineDistances();
-}
-
 /* 3D 光线（复用 Line，避免每帧重建） */
 const rayColors=[0xfb7185,0xfde047,0x22d3ee,0xc084fc];
 function specialRaysCm(){
@@ -642,7 +598,6 @@ function update3D(dt,t){
   warm.position.set(X(-P.objDist)+2,12,8);
   buildMarksPos(s);
   buildRayLines();
-  updateImgArrow();
   // 光子流动
   rayDots.forEach(d=>{
     const pts=d.userData.pts;
