@@ -124,7 +124,7 @@
         <div class="row"><label>焦距 f（由厚度决定）<output id="oF">10.0 cm</output></label>
           <input id="sF" type="range" min="5" max="18" step="0.1" value="10" title="直接微调焦距会反推等效厚度"></div>
         <div class="row"><label>光屏位置 v₀（透镜→光屏）<output id="oS">16.7 cm</output></label>
-          <input id="sS" type="range" min="4" max="42" step="0.1" value="16.7"></div>
+          <input id="sS" type="range" min="4" max="80" step="0.1" value="16.7"></div>
         <div class="hint">h 是物体中心到主光轴的垂直距离（上正下负），不改变物体本身大小。像在光屏<strong>朝向透镜的一面</strong>承接。透镜越厚、折光越强：<b>f ≈ 14 / (0.4+d)</b>。</div>
       </section>
 
@@ -336,7 +336,7 @@ function makeCarrier(){
 /* 透镜组：标准圆形双凸透镜（玻璃质感，厚度可调） */
 const lensGroup=new THREE.Group(); scene.add(lensGroup);
 const LENS_R=7.2;
-const lensHalfThick=()=>0.45+P.thick*0.85; // x 半厚度，随厚度滑杆变化
+const lensHalfThick=()=>0.35+P.thick*1.55; // x 半厚度，随厚度滑杆变化
 let lensMesh, lensEdge, lensGlint;
 function buildLens(){
   // 单位球压扁 → 双凸透镜：迎光看是标准圆形，侧面是凸面
@@ -370,8 +370,8 @@ function buildLens(){
 }
 buildLens();
 
-/* 主光轴 */
-{const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-48,9.6,0),new THREE.Vector3(48,9.6,0)]);
+/* 主光轴（拉长，像距较大时后半段仍在轴上） */
+{const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-70,9.6,0),new THREE.Vector3(92,9.6,0)]);
 const l=new THREE.Line(g,new THREE.LineDashedMaterial({color:0x5b6dc8,dashSize:1.2,gapSize:.9}));
 l.computeLineDistances();scene.add(l);}
 
@@ -524,11 +524,18 @@ buildMarks();
 
 /* 3D 光线（复用 Line，避免每帧重建） */
 const rayColors=[0xfb7185,0xfde047,0x22d3ee,0xc084fc];
+function rayEndX(){
+  // 实像：光线画到像点（可越过光屏）；虚像/不成像：画到右侧远处
+  const img=lensImage();
+  let xf=Math.max(46, P.screen+8, 2*P.focal+8);
+  if(img.kind==='real' && isFinite(img.v) && img.v>0) xf=Math.max(xf, img.v);
+  return Math.min(xf, 90);
+}
 function specialRaysCm(){
   // 物点取卡片中心离轴高度 h；像点 y' = m·h
   const u=P.objDist, f=P.focal, h=P.objH;
   const img=lensImage();
-  const xo=-u, yo=h, xFar=46;
+  const xo=-u, yo=h, xFar=rayEndX();
   const yHit2F=()=>{const sl=(yo-0)/(xo-(-2*f)); return sl*(0-(-2*f));};
   const yHitF =()=>{const sl=(yo-0)/(xo-(-f)); return sl*(0-(-f));};
   const rays=[];
@@ -559,13 +566,41 @@ function toWorld(pts){
   const s=WORLD/44;
   return pts.map(([xcm,ycm])=>new THREE.Vector3(xcm*s, AX+ycm, 0));
 }
-const rayFwd=[], rayBack=[], rayDots=[];
+const rayFwd=[], rayBack=[], rayDots=[], rayArrIn=[], rayArrOut=[];
+const _arrY=new THREE.Vector3(0,1,0), _arrD=new THREE.Vector3();
+function makeRayArrow(col){
+  return new THREE.Mesh(
+    new THREE.ConeGeometry(.32,1.05,10),
+    new THREE.MeshBasicMaterial({color:col})
+  );
+}
+function placeRayArrow(mesh, from, to, t){
+  if(!from||!to){ mesh.visible=false; return; }
+  _arrD.subVectors(to, from);
+  const len=_arrD.length();
+  if(len<0.55){ mesh.visible=false; return; }
+  _arrD.multiplyScalar(1/len);
+  mesh.position.lerpVectors(from, to, t);
+  mesh.quaternion.setFromUnitVectors(_arrY, _arrD);
+  mesh.visible=true;
+}
+function lensSplit(pts){
+  if(!pts||pts.length<2) return null;
+  if(pts.length>=3) return {inc:[pts[0],pts[1]], em:[pts[1],pts[pts.length-1]]};
+  const a=pts[0], b=pts[1];
+  const t=(0-a.x)/((b.x-a.x)||1e-6);
+  const mid=a.clone().lerp(b, THREE.MathUtils.clamp(t,0,1));
+  return {inc:[a,mid], em:[mid,b]};
+}
 for(let i=0;i<4;i++){
   const fwd=new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color:rayColors[i],transparent:true,opacity:.95}));
   const back=new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({color:rayColors[i],dashSize:.9,gapSize:.55,transparent:true,opacity:.85}));
-    const dot=new THREE.Mesh(new THREE.SphereGeometry(.28,10,10), new THREE.MeshBasicMaterial({color:rayColors[i]}));
+  const dot=new THREE.Mesh(new THREE.SphereGeometry(.28,10,10), new THREE.MeshBasicMaterial({color:rayColors[i]}));
+  const aIn=makeRayArrow(rayColors[i]), aOut=makeRayArrow(rayColors[i]);
   dot.userData={pts:[],t:Math.random()};
-  scene.add(fwd,back,dot); rayFwd.push(fwd); rayBack.push(back); rayDots.push(dot);
+  scene.add(fwd,back,dot,aIn,aOut);
+  rayFwd.push(fwd); rayBack.push(back); rayDots.push(dot);
+  rayArrIn.push(aIn); rayArrOut.push(aOut);
 }
 function setPts(line, pts, dashed){
   line.geometry.dispose();
@@ -639,11 +674,19 @@ function buildRayLines(){
     rayFwd[i].visible=on && r.fwd.length>1;
     rayBack[i].visible=on && r.back.length>1;
     rayDots[i].visible=on;
-    if(!on) return;
+    rayArrIn[i].visible=on;
+    rayArrOut[i].visible=on;
+    if(!on){ rayArrIn[i].visible=false; rayArrOut[i].visible=false; return; }
     const fwd=toWorld(r.fwd);
     setPts(rayFwd[i], fwd, false);
     if(r.back.length>1) setPts(rayBack[i], toWorld(r.back), true);
     rayDots[i].userData.pts=fwd;
+    const sp=lensSplit(fwd);
+    if(sp){
+      placeRayArrow(rayArrIn[i], sp.inc[0], sp.inc[1], 0.62);
+      const emLen=sp.em[0].distanceTo(sp.em[1]);
+      placeRayArrow(rayArrOut[i], sp.em[0], sp.em[1], emLen>18? Math.min(0.45, 10/emLen):0.38);
+    }
   });
   updateBundle();
 }
@@ -695,12 +738,20 @@ function draw2D(){
   const W=cv.clientWidth,H=cv.clientHeight;
   ctx2.clearRect(0,0,W,H);
   ctx2.fillStyle='#f5f5f5';ctx2.fillRect(0,0,W,H);
-  const cx=W/2, ax=H*0.52;
-  const pxPerCm=Math.min(W/96,H/52);
-  const X2=cm=>cx+cm*pxPerCm;
-  const Y2=h=>ax-h*pxPerCm;
   const u=P.objDist,f=P.focal,h=P.objH;
   const {v,m,kind}=lensImage();const {s,d}=sharpness();
+  const halfT=lensHalfThick();
+  // 视口自适应：物体、透镜、光屏、像都要落在画布内（像距大时缩小比例，不再截断后半段光线）
+  let xL=Math.min(-u,-2*f,-10)-12;
+  let xR=Math.max(P.screen, 2*f, rayEndX(), 18)+12;
+  if(kind==='virtual' && isFinite(v)) xL=Math.min(xL, v-12);
+  const mag= (kind!=='none' && isFinite(m)) ? Math.abs(m) : 1;
+  const yNeed=Math.max(LENS_R+3, Math.abs(h)+OBJ_H*0.65, mag*Math.abs(h)+OBJ_H*0.45*Math.min(mag,2.8), 14);
+  const pxPerCm=Math.min((W-40)/(xR-xL), (H-72)/(2*yNeed));
+  const ax=H*0.50;
+  const X2=cm=>20+(cm-xL)*pxPerCm;
+  const Y2=hh=>ax-hh*pxPerCm;
+  const cx=X2(0);
   // 主光轴（PhET 蓝虚线）
   ctx2.strokeStyle='#5b6dc8';ctx2.lineWidth=2;ctx2.setLineDash([8,6]);
   ctx2.beginPath();ctx2.moveTo(8,ax);ctx2.lineTo(W-8,ax);ctx2.stroke();ctx2.setLineDash([]);
@@ -712,26 +763,22 @@ function draw2D(){
     ctx2.beginPath();ctx2.arc(x,ax,6,0,7);ctx2.fill();ctx2.stroke();
     ctx2.fillStyle='#344054';ctx2.fillText(t,x,ax+22);
   });
-  // 透镜：双凸，厚度变化夸张可见（d 越大越鼓）
-  const tNorm=(P.thick-0.3)/1.5;
-  const lt=14+tNorm*Math.min(W*0.11, 56);
-  const lh=H*0.36;
+  // 透镜：与 3D 同一半厚度（压扁球体的椭圆轮廓），不再夸张加厚
+  const rx=Math.max(1.2, halfT*pxPerCm);
+  const ry=LENS_R*pxPerCm;
   ctx2.save();
-  const lg=ctx2.createLinearGradient(cx-lt,0,cx+lt,0);
+  const lg=ctx2.createLinearGradient(cx-rx,0,cx+rx,0);
   lg.addColorStop(0,'rgba(180,190,210,.15)');
   lg.addColorStop(.5,'rgba(170,185,210,.7)');
   lg.addColorStop(1,'rgba(180,190,210,.15)');
-  ctx2.fillStyle=lg; ctx2.strokeStyle='#4b5563'; ctx2.lineWidth=2.4;
+  ctx2.fillStyle=lg; ctx2.strokeStyle='#4b5563'; ctx2.lineWidth=2.2;
   ctx2.beginPath();
-  ctx2.moveTo(cx, ax-lh);
-  ctx2.bezierCurveTo(cx+lt, ax-lh*0.35, cx+lt, ax+lh*0.35, cx, ax+lh);
-  ctx2.bezierCurveTo(cx-lt, ax+lh*0.35, cx-lt, ax-lh*0.35, cx, ax-lh);
-  ctx2.closePath(); ctx2.fill(); ctx2.stroke();
-  // 中心厚度标注
+  ctx2.ellipse(cx, ax, rx, ry, 0, 0, Math.PI*2);
+  ctx2.fill(); ctx2.stroke();
   ctx2.strokeStyle='#1d4ed8'; ctx2.lineWidth=1.5; ctx2.setLineDash([]);
-  ctx2.beginPath(); ctx2.moveTo(cx-lt*0.92, ax); ctx2.lineTo(cx+lt*0.92, ax); ctx2.stroke();
+  ctx2.beginPath(); ctx2.moveTo(cx-rx, ax); ctx2.lineTo(cx+rx, ax); ctx2.stroke();
   ctx2.fillStyle='#1d4ed8'; ctx2.font='bold 12px sans-serif';
-  ctx2.fillText(`d=${P.thick.toFixed(2)} cm  f=${f.toFixed(1)} cm`, cx, ax-lh-12);
+  ctx2.fillText(`d=${P.thick.toFixed(2)} cm  f=${f.toFixed(1)} cm`, cx, ax-ry-12);
   ctx2.restore();
 
   const OBJ2=4.4;
@@ -742,7 +789,7 @@ function draw2D(){
     const top=cy-hpx/2;
     ctx2.save();
     if(virtual) ctx2.globalAlpha=.72;
-    ctx2.fillStyle='#bae6fd'; ctx2.strokeStyle='#64748b'; ctx2.lineWidth=10;
+    ctx2.fillStyle='#bae6fd'; ctx2.strokeStyle='#64748b'; ctx2.lineWidth=Math.max(4, Math.min(10, pxPerCm*1.4));
     ctx2.fillRect(xc-wpx/2,top,wpx,hpx);
     ctx2.strokeRect(xc-wpx/2,top,wpx,hpx);
     drawFigure(ctx2, xc, cy, hpx*0.78, flip);
@@ -752,28 +799,65 @@ function draw2D(){
   }
   drawFramed(X2(-u), h, false, `u=${u.toFixed(1)}  h=${h.toFixed(1)}`, false);
   if(kind==='none'){
-    ctx2.fillStyle='#b54708';ctx2.font='bold 14px sans-serif';ctx2.fillText('u = f · 出射平行光 · 不成像',cx,H-16);
+    ctx2.fillStyle='#b54708';ctx2.font='bold 14px sans-serif';ctx2.fillText('u = f · 出射平行光 · 不成像',W/2,H-16);
   }else if(kind==='real'){
     drawFramed(X2(v), m*h, true, `v=${v.toFixed(1)}  h'=${(m*h).toFixed(1)}`, false);
   }else{
     drawFramed(X2(v), m*h, false, `虚像 h'=${(m*h).toFixed(1)}`, true);
   }
 
-  // 四条特殊光线
   const toPx=(wx,wy)=>[X2(wx),Y2(wy)];
-  function strokePts(pts,color,dashed){
+  function arrowAt(x1,y1,x2,y2,color,t){
+    const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy);
+    if(len<14) return;
+    const x=x1+dx*t, y=y1+dy*t, ang=Math.atan2(dy,dx);
+    const sz=Math.max(8, Math.min(13, pxPerCm*1.15));
+    ctx2.save();
+    ctx2.translate(x,y); ctx2.rotate(ang);
+    ctx2.fillStyle=color; ctx2.strokeStyle='#1f2933'; ctx2.lineWidth=1;
+    ctx2.beginPath();
+    ctx2.moveTo(sz,0);
+    ctx2.lineTo(-sz*0.72, sz*0.48);
+    ctx2.lineTo(-sz*0.28, 0);
+    ctx2.lineTo(-sz*0.72, -sz*0.48);
+    ctx2.closePath(); ctx2.fill(); ctx2.stroke();
+    ctx2.restore();
+  }
+  function segsAcrossLens(pts){
+    const segs=[];
+    for(let i=0;i<pts.length-1;i++){
+      const a=pts[i], b=pts[i+1];
+      if((a[0]<0 && b[0]>0) || (a[0]>0 && b[0]<0)){
+        const t=(0-a[0])/((b[0]-a[0])||1e-6);
+        const mid=[0, a[1]+t*(b[1]-a[1])];
+        segs.push([a,mid]); segs.push([mid,b]);
+      }else segs.push([a,b]);
+    }
+    return segs;
+  }
+  function strokePts(pts,color,dashed,withArrows){
     if(!pts||pts.length<2)return;
-    ctx2.save();ctx2.strokeStyle=color;ctx2.lineWidth=2;ctx2.lineJoin='round';
+    ctx2.save();ctx2.strokeStyle=color;ctx2.lineWidth=2;ctx2.lineJoin='round';ctx2.lineCap='round';
     if(dashed)ctx2.setLineDash([6,5]);
     ctx2.beginPath();
     pts.forEach(([wx,wy],i)=>{const [px,py]=toPx(wx,wy);i?ctx2.lineTo(px,py):ctx2.moveTo(px,py);});
     ctx2.stroke();ctx2.restore();
+    if(!withArrows) return;
+    segsAcrossLens(pts).forEach(([a,b])=>{
+      const [x1,y1]=toPx(a[0],a[1]), [x2,y2]=toPx(b[0],b[1]);
+      const midX=(a[0]+b[0])/2;
+      if(midX< -0.05) arrowAt(x1,y1,x2,y2,color,0.62);
+      else if(midX> 0.05){
+        const len=Math.hypot(x2-x1,y2-y1);
+        arrowAt(x1,y1,x2,y2,color, len>160? Math.min(0.42, 90/len):0.38);
+      }
+    });
   }
   const C2c=['#e11d48','#ca8a04','#0ea5e9','#7c3aed'];
   specialRaysCm().forEach((r,i)=>{
     if(!P.rays[i])return;
-    strokePts(r.fwd,C2c[i],false);
-    strokePts(r.back,C2c[i],true);
+    strokePts(r.fwd,C2c[i],false,true);
+    strokePts(r.back,C2c[i],true,false);
   });
 
   // 光屏框
@@ -781,10 +865,10 @@ function draw2D(){
   ctx2.save();
   ctx2.strokeStyle=s>.6?'#067647':(s>.25?'#b54708':'#b42318');
   ctx2.lineWidth=3; ctx2.setLineDash([4,4]);
-  ctx2.beginPath(); ctx2.moveTo(xs, ax-lh); ctx2.lineTo(xs, ax+lh); ctx2.stroke();
+  ctx2.beginPath(); ctx2.moveTo(xs, ax-ry); ctx2.lineTo(xs, ax+ry); ctx2.stroke();
   ctx2.restore();
   ctx2.fillStyle='#344054'; ctx2.font='12px sans-serif';
-  ctx2.fillText(kind==='real'?(s>.6?`✓ 清晰  v₀=${P.screen.toFixed(1)}`:`模糊 Δ=${d.toFixed(1)}  v₀=${P.screen.toFixed(1)}`):`光屏 v₀=${P.screen.toFixed(1)} · 虚像无法承接`, xs, ax+lh+28);
+  ctx2.fillText(kind==='real'?(s>.6?`✓ 清晰  v₀=${P.screen.toFixed(1)}`:`模糊 Δ=${d.toFixed(1)}  v₀=${P.screen.toFixed(1)}`):`光屏 v₀=${P.screen.toFixed(1)} · 虚像无法承接`, xs, ax+ry+22);
 
   const legends=[['① 平行→焦点',C2.平行,0],['② 过光心',C2.光心,1],['③ 过焦点→平行',C2.焦点,2],['④ 过2F',C2['2F'],3]];
   ctx2.textAlign='left';let lx=12;
@@ -817,7 +901,7 @@ function tick(){
   // 光屏追像
   const {v,kind}=lensImage();
   if(P.track&&kind==='real'){
-    P.screen+= (THREE.MathUtils.clamp(v,4,42)-P.screen)*Math.min(1,dt*4);
+    P.screen+= (THREE.MathUtils.clamp(v,4,80)-P.screen)*Math.min(1,dt*4);
     $('sS').value=P.screen;
   }
   // 厚度变化重建透镜（节流）
