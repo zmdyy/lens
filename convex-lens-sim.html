@@ -211,7 +211,7 @@ function syncLabels(){
   $('oS').textContent=P.screen.toFixed(1)+' cm';
 }
 $('sU').addEventListener('input',e=>{P.objDist=+e.target.value;stopAutoIfUser();});
-$('sH').addEventListener('input',e=>{P.objH=+e.target.value;});
+$('sH').addEventListener('input',e=>{P.objH=+e.target.value;buildObject();});
 $('sT').addEventListener('input',e=>{P.thick=+e.target.value;P.focal=fFromThick(P.thick);$('sF').value=P.focal;});
 $('sF').addEventListener('input',e=>{P.focal=+e.target.value;P.thick=Math.min(1.8,Math.max(.3,thickFromF(P.focal)));$('sT').value=P.thick;});
 $('sS').addEventListener('input',e=>{P.screen=+e.target.value;P.track=false;$('bTrack').textContent='📍 光屏追像：关';});
@@ -271,30 +271,39 @@ const tex=new THREE.CanvasTexture(c);
 const ruler=new THREE.Mesh(new THREE.PlaneGeometry(94,2.6),new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:.9}));
 ruler.rotation.x=-Math.PI/2;ruler.position.set(0,2.26,3.1);scene.add(ruler);}
 
-/* 透镜组（厚度可调） */
+/* 透镜组：标准圆形双凸透镜（玻璃质感，厚度可调） */
 const lensGroup=new THREE.Group(); scene.add(lensGroup);
-let lensMesh, lensEdge;
+const LENS_R=7.2;
+const lensHalfThick=()=>0.45+P.thick*0.85; // x 半厚度，随厚度滑杆变化
+let lensMesh, lensEdge, lensGlint;
 function buildLens(){
-  while(lensGroup.children.length) {const o=lensGroup.children.pop(); o.geometry?.dispose();}
-  const t=P.thick; // 0.3~1.8
-  const R=7.2, half=t*1.15;
-  // 双凸截面：用 Lathe 造近似透镜
-  const pts=[];
-  const seg=24;
-  for(let i=0;i<=seg;i++){
-    const y=-R+2*R*i/seg;
-    const sag=half*Math.cos((y/R)*Math.PI/2)**0.9 + 0.12;
-    pts.push(new THREE.Vector2(Math.max(.02,sag),y));
-  }
-  const geo=new THREE.LatheGeometry(pts,40);
-  geo.rotateZ(Math.PI/2); // 轴向沿 x
-  lensMesh=new THREE.Mesh(geo,new THREE.MeshPhysicalMaterial({color:0x7dd3fc,transmission:.55,thickness:1.4,roughness:.08,metalness:0,transparent:true,opacity:.82,emissive:0x0ea5e9,emissiveIntensity:.18,clearcoat:1,side:THREE.DoubleSide}));
+  // 单位球压扁 → 双凸透镜：迎光看是标准圆形，侧面是凸面
+  lensMesh=new THREE.Mesh(
+    new THREE.SphereGeometry(1,64,48),
+    new THREE.MeshPhysicalMaterial({
+      color:0x9fdcff, metalness:0, roughness:.06,
+      transmission:.92, thickness:2.4, ior:1.52,
+      transparent:true, opacity:.55,
+      emissive:0x0ea5e9, emissiveIntensity:.14,
+      clearcoat:1, clearcoatRoughness:.06, specularIntensity:1,
+    }));
+  lensMesh.scale.set(lensHalfThick(),LENS_R,LENS_R);
   lensGroup.add(lensMesh);
-  lensEdge=new THREE.Mesh(new THREE.TorusGeometry(R,.09,10,80),new THREE.MeshStandardMaterial({color:0x22d3ee,emissive:0x22d3ee,emissiveIntensity:1.2}));
+  // 深色镜框
+  lensEdge=new THREE.Mesh(
+    new THREE.TorusGeometry(LENS_R,.17,12,90),
+    new THREE.MeshStandardMaterial({color:0x164e63,roughness:.35,metalness:.9,emissive:0x22d3ee,emissiveIntensity:.55}));
   lensEdge.rotation.y=Math.PI/2; lensGroup.add(lensEdge);
+  // 镜面高光弧（玻璃点睛）
+  lensGlint=new THREE.Mesh(
+    new THREE.TorusGeometry(LENS_R*0.6,.055,8,60,Math.PI*0.45),
+    new THREE.MeshBasicMaterial({color:0xe0f2fe,transparent:true,opacity:.65}));
+  lensGlint.rotation.set(0,Math.PI/2,0.8);
+  lensGlint.position.x=lensHalfThick()*0.9;
+  lensGroup.add(lensGlint);
   const holderM=new THREE.Mesh(new THREE.BoxGeometry(.7,2.6,1.6),benchMat);
-  holderM.position.y=-R-1.6; lensGroup.add(holderM);
-  lensGroup.position.set(0,2.4+7.2,0);
+  holderM.position.y=-LENS_R-1.6; lensGroup.add(holderM);
+  lensGroup.position.set(0,9.6,0);
 }
 buildLens();
 
@@ -308,10 +317,19 @@ const objGroup=new THREE.Group(); scene.add(objGroup);
 const candleMat=new THREE.MeshStandardMaterial({color:0xff7847,emissive:0xff5a1f,emissiveIntensity:1.4});
 const tipMat=new THREE.MeshBasicMaterial({color:0xfff7ad});
 function buildObject(){
-  while(objGroup.children.length){const o=objGroup.children.pop();}
+  objGroup.children.forEach(o=>{o.geometry?.dispose?.();if(o.isSprite){o.material.map?.dispose?.();o.material.dispose?.();}});
+  objGroup.clear();
   const h=P.objH*1.6;
   const body=new THREE.Mesh(new THREE.CylinderGeometry(.55,.7,h,20),candleMat);
   body.position.y=h/2; objGroup.add(body);
+  // 蜡身纹理环（让“未燃烧部分”轮廓更清晰，成像时更易辨认）
+  const bandMat=new THREE.MeshStandardMaterial({color:0xc23a1e,emissive:0x7c1f0e,emissiveIntensity:.9,roughness:.6});
+  [0.32,0.62].forEach(k=>{
+    const band=new THREE.Mesh(new THREE.CylinderGeometry(.585,.585,.16,20),bandMat);
+    band.position.y=h*k; objGroup.add(band);
+  });
+  const tray=new THREE.Mesh(new THREE.CylinderGeometry(1.05,1.2,.3,20),benchMat);
+  tray.position.y=-.15; objGroup.add(tray);
   const flame=new THREE.Mesh(new THREE.SphereGeometry(.62,16,16),tipMat);
   flame.position.y=h+.55; flame.scale.set(1,1.5,1); objGroup.add(flame);
   const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex(),color:0xffc46b,transparent:true,opacity:.85,depthWrite:false}));
@@ -327,6 +345,7 @@ function glowTex(){
 buildObject();
 
 /* 光屏（含清晰/模糊纹理） */
+function rr(x,px,py,w,h,r){x.beginPath();x.moveTo(px+r,py);x.arcTo(px+w,py,px+w,py+h,r);x.arcTo(px+w,py+h,px,py+h,r);x.arcTo(px,py+h,px,py,r);x.arcTo(px,py,px+w,py,r);x.closePath();}
 const scrCanvas=document.createElement('canvas'); scrCanvas.width=256; scrCanvas.height=320;
 const scrCtx=scrCanvas.getContext('2d');
 const scrTex=new THREE.CanvasTexture(scrCanvas);
@@ -352,22 +371,39 @@ function drawScreenTexture(){
     x.fillStyle='#94a3b8';x.font='19px sans-serif';x.fillText('虚像 · 屏上无清晰像',W/2,H-26);
     x.fillStyle='#fbbf24';x.font='bold 22px sans-serif';x.fillText('模 糊 光 斑',W/2,cy-72);
   }else{
+    // 实像：屏上呈现倒立的“蜡烛全身像”（烛身 + 火焰），离焦则模糊
+    const {m}=lensImage();
     const blur=Math.min(26, d*2.6);
-    const imgH=THREE.MathUtils.clamp(Math.abs(lensImage().h)*16,8,120);
-    x.save(); x.filter=`blur(${blur.toFixed(1)}px)`; x.globalAlpha=.95;
-    const bright=Math.round(120+135*s);
-    // 倒立的像：从中心向下画
-    x.fillStyle=`rgb(${bright},${Math.round(90+80*s)},60)`;
-    const iw=Math.max(14,60-blur*1.6);
-    x.beginPath();x.ellipse(W/2,cy+imgH/2,iw/2,imgH/2,0,0,7);x.fill();
-    x.fillStyle=`rgba(255,240,180,${.35+.6*s})`;
-    x.beginPath();x.arc(W/2,cy-6,10,0,7);x.fill();
+    const imgHpx=THREE.MathUtils.clamp(Math.abs(m*P.objH)*24,16,128);
+    const iwpx=Math.max(22,56-blur*1.4);
+    const bodyHpx=imgHpx*0.74;
+    x.save();
+    x.filter=`blur(${blur.toFixed(1)}px)`;
+    x.globalAlpha=.96;
+    const bR=Math.round(150+105*s), bG=Math.round(80+90*s);
+    // 实像倒立：烛身从光轴向下伸展，火焰在最下方 → 正倒一目了然
+    x.fillStyle=`rgb(${bR},${bG},52)`;
+    rr(x,W/2-iwpx/2,cy,iwpx,bodyHpx,7); x.fill();
+    // 烛身高光 + 蜡环
+    x.fillStyle=`rgba(255,236,190,${.25+.45*s})`;
+    rr(x,W/2-iwpx/2+6,cy+7,9,bodyHpx-14,4); x.fill();
+    x.fillStyle=`rgba(120,30,10,${.35+.4*s})`;
+    x.fillRect(W/2-iwpx/2,cy+bodyHpx*0.4,iwpx,4);
+    // 烛盘
+    x.fillStyle=`rgba(100,116,139,${.6+.3*s})`;
+    rr(x,W/2-iwpx/2-8,cy-8,iwpx+16,9,4); x.fill();
+    // 火焰（倒立 → 朝下）
+    const fy=cy+bodyHpx+13;
+    x.fillStyle=`rgba(255,240,180,${.4+.55*s})`;
+    x.beginPath();x.ellipse(W/2,fy,11,15,0,0,7);x.fill();
+    x.fillStyle=`rgba(255,150,50,${.5+.5*s})`;
+    x.beginPath();x.ellipse(W/2,fy+2,6,9,0,0,7);x.fill();
     x.restore(); x.filter='none';
     x.fillStyle=s>.6?'#4ade80':(s>.25?'#fbbf24':'#fb7185');
     x.font='bold 21px sans-serif';
-    x.fillText(s>.6?'✓ 清 晰':(s>.25?'◎ 较模糊':'✕ 很模糊'),W/2,cy-imgH/2-16);
+    x.fillText(s>.6?'✓ 清 晰 · 倒立':(s>.25?'◎ 较模糊':'✕ 很模糊'),W/2,cy-20);
     x.fillStyle='#94a3b8';x.font='18px sans-serif';
-    x.fillText(`Δ=${d.toFixed(1)}cm`,W/2,H-26);
+    x.fillText(`Δ=${d.toFixed(1)}cm · ${Math.abs(m).toFixed(2)}×`,W/2,H-26);
   }
   scrTex.needsUpdate=true;
 }
@@ -391,6 +427,49 @@ function buildMarks(){
   });
 }
 buildMarks();
+
+/* 3D 像指示箭头：悬浮在像距处，直观显示正立/倒立、放大/缩小 */
+const imgGroup=new THREE.Group(); scene.add(imgGroup);
+const imgMat=new THREE.MeshBasicMaterial({color:0x4ade80,transparent:true,opacity:.55,depthWrite:false});
+const imgShaft=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,1,12),imgMat);
+const imgTip=new THREE.Mesh(new THREE.ConeGeometry(.6,1.1,14),imgMat);
+const imgTag=labelSprite('实像','#4ade80');
+imgTag.scale.set(7,2.6,1);
+imgGroup.add(imgShaft,imgTip,imgTag);
+const linkGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+const imgLink=new THREE.Line(linkGeo,new THREE.LineDashedMaterial({color:0x4ade80,dashSize:.7,gapSize:.5,transparent:true,opacity:.7}));
+scene.add(imgLink);
+let imgTagCache='';
+function setImgTag(txt,color){
+  const key=txt+color; if(key===imgTagCache)return; imgTagCache=key;
+  const c=document.createElement('canvas');c.width=256;c.height=64;const g=c.getContext('2d');
+  g.fillStyle='rgba(2,6,23,.82)';g.beginPath();g.roundRect(6,6,244,52,12);g.fill();
+  g.strokeStyle=color;g.lineWidth=2;g.stroke();g.fillStyle=color;
+  g.font='bold 26px sans-serif';g.textAlign='center';g.fillText(txt,128,43);
+  imgTag.material.map?.dispose();imgTag.material.map=new THREE.CanvasTexture(c);imgTag.material.needsUpdate=true;
+}
+function updateImgArrow(){
+  const {v,m,kind}=lensImage();
+  if(kind==='none'||!isFinite(v)||Math.abs(v)>46){imgGroup.visible=false;imgLink.visible=false;return;}
+  imgGroup.visible=true;imgLink.visible=true;
+  const AX=9.6, Hh=THREE.MathUtils.clamp(Math.abs(m)*(P.objH*1.6+1.15),1,13);
+  const col=kind==='real'?'#4ade80':'#c4b5fd';
+  imgMat.color.set(col); imgLink.material.color.set(col);
+  const shaftH=Math.max(.3,Hh-1.1);
+  imgShaft.scale.y=shaftH;
+  const tipS=THREE.MathUtils.clamp(Hh/5,.45,1.7);
+  imgTip.scale.setScalar(tipS);
+  const dir=kind==='real'?-1:1; // 实像倒立朝下，虚像正立朝上
+  imgGroup.position.set(X(v),AX,3.6);
+  imgShaft.position.set(0,dir*shaftH/2,0);
+  imgTip.position.set(0,dir*(shaftH+0.55*tipS),0);
+  imgTip.rotation.z=kind==='real'?Math.PI:0;
+  imgTag.position.set(0,dir*(Hh/2+2.8),0);
+  setImgTag(kind==='real'?'实像 · 倒立':'虚像 · 正立',col);
+  const p=linkGeo.attributes.position;
+  p.setXYZ(0,X(v),AX,3.6);p.setXYZ(1,X(v),AX,0);p.needsUpdate=true;
+  imgLink.computeLineDistances();
+}
 
 /* 3D 光线 */
 const rayColors=[0xfb7185,0xfde047,0x22d3ee,0xc084fc];
@@ -449,6 +528,7 @@ function update3D(dt,t){
   warm.position.set(X(-P.objDist)+2,12,6);
   buildMarksPos(s);
   buildRayLines();
+  updateImgArrow();
   // 光子流动
   rayDots.forEach(d=>{
     d.userData.t+=dt*.35; if(d.userData.t>1)d.userData.t-=1;
@@ -456,8 +536,8 @@ function update3D(dt,t){
     d.position.lerpVectors(pts[k],pts[k+1],a);
   });
   drawScreenTexture();
-  lensGroup.scale.x=0.6+P.thick*0.55;
-  lensEdge.material.emissiveIntensity=1+P.thick*.4;
+  lensMesh.scale.x=lensHalfThick();
+  lensGlint.position.x=lensMesh.scale.x*0.9;
 }
 let markObjs=[];
 function buildMarksPos(s){
