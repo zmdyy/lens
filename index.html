@@ -858,10 +858,22 @@ function measuredHeights(){
   return out;
 }
 const objGroup=new THREE.Group(); scene.add(objGroup);
-const objCanvas=document.createElement('canvas'); objCanvas.width=256; objCanvas.height=360;
-const objCtx=objCanvas.getContext('2d');
+const TEXTURE_SCALE=4, TEX_WIDTH=256*TEXTURE_SCALE, TEX_HEIGHT=360*TEXTURE_SCALE;
+function configureSharpTexture(tex){
+  tex.colorSpace=THREE.SRGBColorSpace;
+  tex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+  tex.minFilter=THREE.LinearMipmapLinearFilter;
+  tex.magFilter=THREE.LinearFilter;
+  tex.generateMipmaps=true;
+}
+function createSharpCanvas(){
+  const c=document.createElement('canvas');c.width=TEX_WIDTH;c.height=TEX_HEIGHT;
+  const ctx=c.getContext('2d');ctx.setTransform(TEXTURE_SCALE,0,0,TEXTURE_SCALE,0,0);
+  return {canvas:c,ctx};
+}
+const {canvas:objCanvas,ctx:objCtx}=createSharpCanvas();
 const objTex=new THREE.CanvasTexture(objCanvas);
-objTex.colorSpace=THREE.SRGBColorSpace;
+configureSharpTexture(objTex);
 let objCard, objStand;
 function buildObject(){
   objGroup.clear();
@@ -897,10 +909,9 @@ buildObject();
 
 /* 3D 虚像：半透明虚线框 + 反向延长线（u<f 时与 2D 一致） */
 const virtGroup=new THREE.Group(); scene.add(virtGroup);
-const virtCanvas=document.createElement('canvas'); virtCanvas.width=256; virtCanvas.height=360;
-const virtCtx=virtCanvas.getContext('2d');
+const {canvas:virtCanvas,ctx:virtCtx}=createSharpCanvas();
 const virtTex=new THREE.CanvasTexture(virtCanvas);
-virtTex.colorSpace=THREE.SRGBColorSpace;
+configureSharpTexture(virtTex);
 let virtCard, virtWire;
 function paintVirtualCard(){
   const x=virtCtx,W=256,H=360;
@@ -965,62 +976,81 @@ function layoutVirtualImage(){
 }
 buildVirtualImage();
 
-/* 光屏（含清晰/模糊纹理） */
-const scrCanvas=document.createElement('canvas'); scrCanvas.width=256; scrCanvas.height=360;
-const scrCtx=scrCanvas.getContext('2d');
+/* 无边框教学光屏：白色圆角塑料白屏＋中央细金属杆。保留原来的光屏底座与滑块。
+   圆角几何体是实际 3D 网格，不是假装圆角的纹理边框。 */
+const SCREEN_H=12.4, SCREEN_W=8.6;
+const {canvas:scrCanvas,ctx:scrCtx}=createSharpCanvas();
 const scrTex=new THREE.CanvasTexture(scrCanvas);
-scrTex.colorSpace=THREE.SRGBColorSpace;
+configureSharpTexture(scrTex);
 const scrGroup=new THREE.Group(); scene.add(scrGroup);
-const scrFace=new THREE.MeshBasicMaterial({map:scrTex});
-const scrSide=new THREE.MeshStandardMaterial({color:0xc5ccd6,roughness:.6});
-// -x 朝向透镜：水平翻转贴图，使从透镜一侧看到正立的画面左右关系
+function roundedScreenOutline(w,h,r){
+  const sh=new THREE.Shape(),x=-w/2,y=-h/2;
+  sh.moveTo(x+r,y);
+  sh.lineTo(x+w-r,y); sh.quadraticCurveTo(x+w,y,x+w,y+r);
+  sh.lineTo(x+w,y+h-r);sh.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  sh.lineTo(x+r,y+h);sh.quadraticCurveTo(x,y+h,x,y+h-r);
+  sh.lineTo(x,y+r);sh.quadraticCurveTo(x,y,x+r,y);
+  return sh;
+}
+const scrShape=roundedScreenOutline(SCREEN_W,SCREEN_H,.29);
+const screenPlastic=new THREE.MeshStandardMaterial({color:0xf4f4f2,roughness:.8,metalness:0,side:THREE.DoubleSide});
+const screenBack=new THREE.Mesh(
+  new THREE.ExtrudeGeometry(scrShape,{depth:.36,bevelEnabled:true,bevelThickness:.045,bevelSize:.07,bevelSegments:3,curveSegments:12}),
+  screenPlastic
+);
+screenBack.rotation.y=-Math.PI/2;
+screenBack.position.x=.17;
+scrGroup.add(screenBack);
+// Canvas 纹理在圆角轮廓内完整贴合，背面绝不出现灰色厚外框。
+const scrFaceGeo=new THREE.ShapeGeometry(scrShape,12);
+const pos=scrFaceGeo.attributes.position;
+const uv=scrFaceGeo.attributes.uv;
+for(let i=0;i<pos.count;i++){
+  uv.setXY(i,(pos.getX(i)+SCREEN_W/2)/SCREEN_W,(pos.getY(i)+SCREEN_H/2)/SCREEN_H);
+}
+uv.needsUpdate=true;
 const scrLensMap=scrTex.clone();
-scrLensMap.wrapS=THREE.RepeatWrapping; scrLensMap.repeat.x=-1; scrLensMap.offset.x=1;
-scrFace.map=scrLensMap;
-const scrMesh=new THREE.Mesh(new THREE.BoxGeometry(.5,12.4,8.6),[
-  scrSide, scrFace, scrSide, scrSide, scrSide, scrSide
-]);
+scrLensMap.wrapS=THREE.RepeatWrapping;scrLensMap.repeat.x=-1;scrLensMap.offset.x=1;
+configureSharpTexture(scrLensMap);
+const scrFace=new THREE.MeshBasicMaterial({map:scrLensMap,side:THREE.DoubleSide});
+const scrMesh=new THREE.Mesh(scrFaceGeo,scrFace);
+scrMesh.rotation.y=-Math.PI/2;
+scrMesh.position.x=-.245;
 scrGroup.add(scrMesh);
-const scrClampY=-6.2-0.42;
-addRodClamp(scrGroup, scrClampY, 0);
-addChromeRod(scrGroup, RAIL_Y-AX+0.55, scrClampY+0.28, 0);
-const scrCar=makeCarrier(); scrCar.position.y=RAIL_Y-AX; scrGroup.add(scrCar);
+// 光屏与金属杆之间只保留小型金属套筒，取消旧屏底笨重夹座。
+const scrSocket=new THREE.Mesh(new THREE.CylinderGeometry(.25,.24,.47,20),
+ new THREE.MeshStandardMaterial({color:0xdbe1e6,roughness:.36,metalness:.68}));
+scrSocket.position.y=-SCREEN_H/2-.24;scrGroup.add(scrSocket);
+addChromeRod(scrGroup,RAIL_Y-AX+0.55,-SCREEN_H/2-.29,0);
+const scrCar=makeCarrier();scrCar.position.y=RAIL_Y-AX;scrGroup.add(scrCar);
 scrGroup.position.y=AX;
 function drawScreenTexture(){
-  const {kind,m}=lensImage(); const {s,d}=sharpness();
+  const img=lensImage(),{kind,m}=img,{d}=sharpness();
+  // 高清纹理不再每秒上传 60 次。发生参数变化立即进入下个绘制时隙，蜡烛约 12 FPS。
+  const key=[P.objType,P.objDist.toFixed(2),P.objH.toFixed(2),P.focal.toFixed(2),
+    P.screen.toFixed(2),P.cover.toFixed(3),P.dark?1:0,
+    P.objType==='candle'?Math.floor(flamePhase*6):0].join(':');
+  if(drawScreenTexture._key===key)return;
+  const now=performance.now();
+  if(now-(drawScreenTexture._last||0)<65)return;
+  drawScreenTexture._last=now;drawScreenTexture._key=key;
   const x=scrCtx,W=256,H=360;
   x.clearRect(0,0,W,H);
-  // 背板自身保持中性色，物像的亮度按通光面积衰减，不能把背景一并压黑。
-  x.fillStyle=P.dark?'#182b43':'#344c63'; x.fillRect(0,0,W,H);
-  x.fillStyle='#94a3b8'; x.fillRect(0,0,W,12); x.fillRect(0,H-12,W,12); x.fillRect(0,0,12,H); x.fillRect(W-12,0,12,H);
-  x.fillStyle='#e2e8f0'; x.fillRect(3,3,W-6,8); x.fillRect(3,H-11,W-6,8);
-  // 光屏坐标系：画布中心=主光轴，朝向透镜的 -x 面承接像
-  const cm2px=H/12.4;
-  x.strokeStyle='#94a3b8'; x.setLineDash([4,4]); x.beginPath(); x.moveTo(18,H/2); x.lineTo(W-18,H/2); x.stroke(); x.setLineDash([]);
-  if(P.cover>=1){
-    x.fillStyle=P.dark?'#eef4ff':'#e9f1fa'; x.font='bold 20px sans-serif'; x.textAlign='center';
-    x.fillText('透镜被完全挡住 · 屏上无像',W/2,H/2);
-  }else if(kind!=='real' || !isFinite(m)){
-    x.fillStyle=P.dark?'#eef4ff':'#e9f1fa'; x.font='bold 20px sans-serif'; x.textAlign='center';
-    x.fillText('虚像 · 屏上无像',W/2,H/2);
-  }else{
+  // 白色塑料屏的本色：未成像时就是白屏，不能再有蓝色底板、边框或大字说明。
+  x.fillStyle=P.dark?'#eeeef0':'#faf9f5';x.fillRect(0,0,W,H);
+  if(P.cover<1 && kind==='real' && Number.isFinite(m)){
+    const cm2px=H/SCREEN_H;
     const blur=Math.min(22,d*2.4);
     const figH=FIGURE_BASE_CM*Math.abs(m)*cm2px;
-    const yC=H/2 - (m*P.objH)*cm2px; // 实像 m<0 → 画在光轴下方
-    const light=uncoverFrac();
+    const yC=H/2-(m*P.objH)*cm2px;
     x.save();
-    if(blur>0) x.filter=`blur(${blur.toFixed(1)}px)`;
-    // 面积决定像的相对光强；对屏幕 sRGB 适度映射后仍能看出明显变暗。
-    x.globalAlpha=Math.pow(light,0.70);
+    if(blur>0)x.filter=`blur(${blur.toFixed(1)}px)`;
+    x.globalAlpha=Math.pow(uncoverFrac(),.70);
     drawFigure(x,W/2,yC,figH,true);
-    x.restore(); x.filter='none';
-    x.fillStyle=s>.6?'#067647':(s>.25?'#b54708':'#b42318');
-    x.font='bold 18px sans-serif'; x.textAlign='center';
-    x.fillText(s>.6?'✓ 清晰 · 倒立':(s>.25?'◎ 较模糊':'✕ 很模糊'),W/2,28);
+    x.restore();
   }
-  scrTex.needsUpdate=true; scrLensMap.needsUpdate=true;
+  scrTex.needsUpdate=true;scrLensMap.needsUpdate=true;
 }
-
 /* 一键物像高度计算。图案高度由绘制边界决定，像高按透镜横向放大率等比计算。 */
 let showMeasurement=false;
 $('bMeasureToggle').onclick=()=>{
