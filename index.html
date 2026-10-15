@@ -315,6 +315,8 @@ const P = {
   dark: localStorage.getItem('lensDark')==='1',
   show2d: true,
 };
+// 物与像共用火焰变化相位，降低物像不同步的风险。
+let flamePhase=0, flameAccumulator=0;
 const THEME={
   light:{scene:0xf5f5f5,grid:[0xc8cdd6,0xe4e7ec],ambient:.9,key:1.15,fill:.45,exposure:1.15},
   dark:{scene:0x172234,grid:[0x475569,0x263345],ambient:.85,key:1.15,fill:.55,exposure:1.12},
@@ -732,6 +734,46 @@ l.computeLineDistances();scene.add(l);}
 
 /* 物体：PhET 风格带画框卡片（铅笔/箭头/星星/蜡烛） */
 function rr(x,px,py,w,h,r){x.beginPath();x.moveTo(px+r,py);x.arcTo(px+w,py,px+w,py+h,r);x.arcTo(px+w,py+h,px,py+h,r);x.arcTo(px,py+h,px,py,r);x.arcTo(px,py,px+w,py,r);x.closePath();}
+function drawRealisticCandle(x,h){
+  const W=h*.42, top=-h*.25, bottom=h*.43;
+  const waxW=W*.67, tipX=Math.sin(flamePhase*1.7)*h*.018+Math.sin(flamePhase*2.3)*h*.010;
+  const tipY=-h*.545+Math.sin(flamePhase*2.5)*h*.014;
+  x.save();
+  const body=x.createLinearGradient(-waxW/2,0,waxW/2,0);
+  body.addColorStop(0,'#8e260b');body.addColorStop(.20,'#d93d0b');
+  body.addColorStop(.50,'#ff7522');body.addColorStop(.78,'#ea4810');body.addColorStop(1,'#9d2307');
+  x.beginPath();x.moveTo(-waxW/2,top+5);
+  x.quadraticCurveTo(-waxW/2-3,top+15,-waxW/2,bottom-7);
+  x.quadraticCurveTo(-waxW/2+3,bottom+3,0,bottom+4);
+  x.quadraticCurveTo(waxW/2+3,bottom+3,waxW/2,bottom-7);
+  x.lineTo(waxW/2,top+5);x.closePath();x.fillStyle=body;x.fill();
+  x.fillStyle='#fd8a34';x.beginPath();x.ellipse(0,top+5,waxW/2,Math.max(4,h*.025),0,0,Math.PI*2);x.fill();
+  x.strokeStyle='rgba(255,185,100,.58)';x.lineWidth=Math.max(2,h*.014);x.lineCap='round';
+  x.beginPath();x.moveTo(-waxW*.33,top+6);x.quadraticCurveTo(-waxW*.30,top+20,-waxW*.31,top+h*.15);x.stroke();
+  x.beginPath();x.moveTo(waxW*.3,top+7);x.quadraticCurveTo(waxW*.32,top+22,waxW*.29,top+h*.10);x.stroke();
+  x.strokeStyle='#22201e';x.lineWidth=Math.max(2.2,h*.010);
+  x.beginPath();x.moveTo(0,top+5);x.quadraticCurveTo(h*.018,top-h*.015,tipX*.18,top-h*.07);x.stroke();
+  const baseY=top+h*.012;
+  const outer=x.createLinearGradient(0,tipY,0,baseY);
+  outer.addColorStop(0,'rgba(255,103,24,.03)');
+  outer.addColorStop(.12,'#ff8c22');outer.addColorStop(.42,'#ffb12d');
+  outer.addColorStop(.73,'#fca70d');outer.addColorStop(1,'#2944d9');
+  const half=h*(.080+Math.sin(flamePhase*1.4)*.003);
+  x.beginPath();x.moveTo(0,baseY);
+  x.bezierCurveTo(-half*.99,baseY-h*.032,-half*1.12,top-h*.15,tipX,tipY);
+  x.bezierCurveTo(half*.83,top-h*.14,half*.95,baseY-h*.04,0,baseY);
+  x.closePath();x.fillStyle=outer;x.fill();
+  const hot=x.createRadialGradient(0,top-h*.13,0,0,top-h*.13,h*.17);
+  hot.addColorStop(0,'#fffef2');hot.addColorStop(.36,'#fffcd7');hot.addColorStop(.72,'rgba(255,239,125,.88)');
+  hot.addColorStop(1,'rgba(255,191,49,0)');
+  x.beginPath();x.moveTo(0,baseY-h*.014);
+  x.bezierCurveTo(-half*.65,baseY-h*.085,-half*.34,top-h*.205,tipX*.35,top-h*.28);
+  x.bezierCurveTo(half*.4,top-h*.20,half*.57,baseY-h*.09,0,baseY-h*.014);
+  x.closePath();x.fillStyle=hot;x.fill();
+  x.fillStyle='#2d55e8';x.beginPath();x.ellipse(0,top-h*.011,h*.019,h*.050,0,0,Math.PI*2);x.fill();
+  x.fillStyle='#6fa8ff';x.beginPath();x.ellipse(0,top-h*.022,h*.008,h*.027,0,0,Math.PI*2);x.fill();
+  x.restore();
+}
 function drawFigure(x,cx,cy,h,flip,alpha=1){
   x.save(); x.translate(cx,cy); if(flip) x.scale(1,-1); x.globalAlpha*=alpha;
   x.lineJoin='round'; x.lineCap='round';
@@ -748,17 +790,11 @@ function drawFigure(x,cx,cy,h,flip,alpha=1){
       x.lineTo(Math.cos(a)*w, Math.sin(a)*h/2*.92); x.lineTo(Math.cos(b)*w*.4, Math.sin(b)*h/2*.36);}
     x.closePath(); x.fill(); x.stroke();
   }else if(t==='candle'){
-    x.strokeStyle='#0f172a'; x.lineWidth=Math.max(3,h/28);
-    x.fillStyle='#fb923c'; rr(x,-w*.3,-h/2+14,w*.6,h-32,8); x.fill(); x.stroke();
-    x.fillStyle='#9a3412'; x.fillRect(-w*.3,-h/2+h*0.38,w*.6,7);
-    x.fillStyle='#e2e8f0'; rr(x,-w*.46,h/2-18,w*.92,14,4); x.fill(); x.stroke();
-    x.fillStyle='#fde047'; x.beginPath(); x.ellipse(0,-h/2+4,9,14,0,0,7); x.fill(); x.stroke();
-    x.fillStyle='#fff7ed'; x.beginPath(); x.ellipse(0,-h/2+2,4,7,0,0,7); x.fill();
+    drawRealisticCandle(x,h);
   }else if(t==='f'){
     const bw=w*1.15, bh=h*0.76;
-    x.fillStyle='#f1f5f9'; x.strokeStyle='#64748b'; x.lineWidth=Math.max(2.5,h/36);
-    rr(x,-bw/2,-bh/2,bw,bh,7); x.fill(); x.stroke();
-    x.fillStyle='#dc2626'; x.strokeStyle='#7f1d1d'; x.lineWidth=Math.max(2,h/42);
+    // 只画红色 F 字母，不增加带粉红色光晕的衬底。
+    x.fillStyle='#ff313c'; x.strokeStyle='#9f1721'; x.lineWidth=Math.max(2,h/45);
     const lw=Math.max(3.5,h/18);
     const top=-bh*0.36, bot=bh*0.36, left=-bw*0.34, mid=-bh*0.04;
     // F：左竖 + 上横 + 中横（无下横，区别于 E）
@@ -768,9 +804,7 @@ function drawFigure(x,cx,cy,h,flip,alpha=1){
     x.strokeRect(left, top, lw, bot-top);
     x.strokeRect(left, top, bw*0.66, lw);
     x.strokeRect(left, mid, bw*0.50, lw);
-    x.shadowColor='#ff4444'; x.shadowBlur=h*0.12;
-    x.fillStyle='rgba(255,60,60,.25)'; rr(x,-bw/2+4,-bh/2+4,bw-8,bh-8,5); x.fill();
-    x.shadowBlur=0;
+    // 去掉旧版整块底板的粉红透明外发光。
   }else if(t==='pencil'){
     x.strokeStyle='#0f172a'; x.lineWidth=Math.max(3.5,h/24);
     x.fillStyle='#f5d76e'; rr(x,-w*.34,-h/2+22,w*.68,h-48,4); x.fill(); x.stroke();
@@ -783,9 +817,9 @@ function drawFigure(x,cx,cy,h,flip,alpha=1){
   x.restore();
 }
 function paintCard(x,W,H,flip,blur=0,empty=false){
-  const isF=P.objType==='f' && !empty;
-  x.fillStyle=isF?'#cbd5e1':'#7dd3fc'; x.fillRect(0,0,W,H);
-  x.fillStyle=isF?'#e2e8f0':'#bae6fd'; x.fillRect(14,14,W-28,H-28);
+  const isF=P.objType==='f' && !empty, isCandle=P.objType==='candle' && !empty;
+  x.fillStyle=isF?'#aab6c2':(isCandle?'#101b2a':'#7dd3fc'); x.fillRect(0,0,W,H);
+  x.fillStyle=isF?'#d6dce3':(isCandle?'#162338':'#bae6fd'); x.fillRect(14,14,W-28,H-28);
   x.fillStyle='#94a3b8'; x.fillRect(0,0,W,12); x.fillRect(0,H-12,W,12); x.fillRect(0,0,12,H); x.fillRect(W-12,0,12,H);
   x.fillStyle='#e2e8f0'; x.fillRect(3,3,W-6,8); x.fillRect(3,H-11,W-6,8);
   if(empty){
@@ -807,7 +841,7 @@ function figureBounds(){
   if(t==='f')return [-.2736,.3292];
   if(t==='arrow')return [-.5,.4328];
   if(t==='star')return [-.46,.3721];
-  if(t==='candle')return [-.536,.486];
+  if(t==='candle')return [-.559,.45];
   return [-.50,.485]; // pencil
 }
 function measuredHeights(){
@@ -1518,6 +1552,17 @@ const clock=new THREE.Clock();
 function tick(){
   requestAnimationFrame(tick);
   const dt=Math.min(clock.getDelta(),.05);
+  flamePhase+=dt*2.0;
+  if(P.objType==='candle'){
+    flameAccumulator+=dt;
+    // 源物与像同一相位，低频更新纹理减少重绘。
+    if(flameAccumulator>=.085){
+      flameAccumulator=0;
+      paintCard(objCtx,256,360,false,0,false);
+      objTex.needsUpdate=true;
+      if(lensImage().kind==='virtual')paintVirtualCard();
+    }
+  }else flameAccumulator=0;
   if(P.auto){
     // 往返 6~38，经过焦点减速到 ~15%
     const distF=Math.abs(P.objDist-P.focal);
