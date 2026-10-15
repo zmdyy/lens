@@ -1023,7 +1023,7 @@ function measurementReady(){
   if(P.cover>=1)return {ok:false,why:'透镜被完全遮挡，没有可测量的光屏像。',a};
   if(s<.78)return {ok:false,why:'光屏尚未对焦。请先移动光屏，让像清晰后测量。',a};
   if(a.imageHeight>12||a.imageBottom< -6.2||a.imageTop>6.2)
-    return {ok:false,why:'像超出光屏和刻度范围，无法完整量取。请调整物距。',a};
+    return {ok:false,why:'放大的像超出光屏测量范围。可以在「更多参数」中减小物体离轴高度，或适当增大物距后再测量。',a};
   return {ok:true,why:'物尺和像尺的 0 刻度分别与图案下缘对齐；读取图案上缘刻度。',a};
 }
 const mCompare=$('bMeasureCompare'),mReference=$('measureReference');
@@ -1580,8 +1580,8 @@ function updateInfo(){
   else detail=`u=<b>${P.objDist.toFixed(1)}</b>，f=<b>${P.focal.toFixed(1)}</b>，v=<b>${v.toFixed(1)}cm</b>，光屏偏差 <b>${d.toFixed(1)}cm</b>。${coverNote}`;
   $('imgDetail').innerHTML=detail;
   const pct=Math.round(s*100);
-  $('sharpBar').style.width=pct+'%';
-  $('hSharp').textContent=(kind==='real'?(s>.6?'清晰 ':'模糊 '):'虚像 ')+pct+'%';
+  $('sharpBar').style.width=(P.cover>=1?0:pct)+'%';
+  $('hSharp').textContent=P.cover>=1?'完全遮挡 · 无像':(kind==='real'?(s>.6?'清晰 ':'模糊 '):'虚像 ')+pct+'%';
   if(P.cover>=1) $('blurHint').textContent='透镜完全遮挡：清晰度与亮度是不同概念，光屏上无像';
   else if(P.cover>0 && kind==='real') $('blurHint').textContent=`通光面积 ${lit}% · 像保持完整，清晰度与亮度分别变化`;
   else $('blurHint').textContent=kind!=='real'?'虚像无法用光屏承接，把眼睛放在光屏一侧透过透镜观察':(s>.6?`光屏清晰度 ${pct}% · 对准了，像很锐利 ✓`:`光屏清晰度 ${pct}% · 前后移动光屏寻找清晰像（Δ=${d.toFixed(1)}cm）`);
