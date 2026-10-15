@@ -180,6 +180,7 @@
   html:not([data-theme="dark"]) .scene-label--focal{color:#164f9c;-webkit-text-stroke:.1px #fff;text-shadow:0 1px 2px white,0 0 3px white}
   .scene-label--carrier{font-size:17px;font-weight:800;color:white;background:#14191f;border:1px solid #657081;border-radius:9px;padding:3px 10px;text-shadow:0 1px 1px #000;box-shadow:0 1px 3px #0006}
   .scene-label--virtual{font-size:17px;font-weight:800;color:#ead7ff;background:rgba(49,25,85,.86);border-radius:6px;padding:3px 7px;text-shadow:0 1px 3px #110d18}
+  .scene-label--ruler{font-size:14px;line-height:1;color:#fff;font-weight:800;background:rgba(10,13,17,.92);border-radius:3px;padding:1px 2px;font-variant-numeric:tabular-nums;text-shadow:0 1px 1px black}
   .scene-label--measure{font-size:18px;font-weight:800;color:#bf2135;background:rgba(255,255,255,.96);border:1px solid #f3afb5;border-radius:6px;padding:5px 8px;box-shadow:0 2px 8px #0005;font-variant-numeric:tabular-nums}
   html[data-theme="dark"] .scene-label--measure{background:rgba(21,32,48,.95);color:#ff818b;border-color:#eb7783}
   .scene-label--theory{border-style:dashed}
@@ -624,9 +625,7 @@ function addRodClamp(group, y, z=0){
    const h=long?Math.round(Hpx*0.55):mid?Math.round(Hpx*0.36):Math.round(Hpx*0.2);
    g.fillRect(x-(long?2:1), 6, long?3:2, h);
  }
- g.font=`${Math.round(Hpx*0.38)}px Helvetica, Arial, sans-serif`;
- g.textAlign='center'; g.textBaseline='middle';
- for(let cm=0; cm<=L; cm+=5) g.fillText(String(cm), xOf(cm), Hpx*0.78);
+ // 刻线贴在尺面；数字采用高清 CSS2D 标签，避免放大时低清 Canvas 字虚化。
  const tex=new THREE.CanvasTexture(c);
  tex.colorSpace=THREE.SRGBColorSpace;
  tex.generateMipmaps=false; tex.minFilter=THREE.LinearFilter; tex.magFilter=THREE.LinearFilter;
@@ -635,7 +634,12 @@ function addRodClamp(group, y, z=0){
  const ruler=new THREE.Mesh(new THREE.BoxGeometry(L, H, .1), [edge,edge,edge,edge,face,edge]);
  // 贴在座体 +z 前立面，与金属座连成一体
  ruler.position.set(0, BENCH_Y-0.18, 3.7/2+0.05);
- scene.add(ruler);}
+ scene.add(ruler);
+ for(let cm=0;cm<=L;cm+=5){
+   const label=sharpLabel(String(cm),'scene-label--ruler');
+   label.position.set(cm-L/2,BENCH_Y-.18-H*.27,3.7/2+.16);
+   scene.add(label);
+ }}
 
 /* 光具座刻度指示三角：对准光源 / 透镜 / 光屏所在读数 */
 function tagSprite(txt,color){
