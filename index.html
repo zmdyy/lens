@@ -184,6 +184,9 @@
   .scene-label--measure{font-size:18px;font-weight:800;color:#bf2135;background:rgba(255,255,255,.96);border:1px solid #f3afb5;border-radius:6px;padding:5px 8px;box-shadow:0 2px 8px #0005;font-variant-numeric:tabular-nums}
   html[data-theme="dark"] .scene-label--measure{background:rgba(21,32,48,.95);color:#ff818b;border-color:#eb7783}
   .scene-label--theory{border-style:dashed}
+  /* 文字锚点精确锁定在尺寸线上，内部标签向旁侧偏移 10px，不能再离开元件。 */
+  .scene-label--measure-anchor{width:0;height:0;overflow:visible}
+  .scene-label--measure-anchor>.scene-label--measure{position:absolute;left:10px;top:0;transform:translateY(-50%);display:block}
   #c3d>.label-renderer{position:absolute;inset:0;pointer-events:none;z-index:4}
   kbd{background:var(--chip-bg);border:1px solid var(--stroke);border-bottom-width:2px;border-radius:6px;padding:0 6px;font-size:12px;color:var(--chip-text)}
   #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--toast-bg);border:1px solid #f0c419;color:var(--toast-text);font-size:12px;padding:9px 16px;border-radius:999px;transition:.35s;pointer-events:none;z-index:99;box-shadow:0 8px 24px rgba(16,24,40,.12)}
@@ -1116,41 +1119,54 @@ function updateMeasurementUI(){
   info.push('H 为物体图案的真实高度，不等于“离轴高度 h”。');
   note.textContent=info.join(' ');
 }
-/* 高度尺寸标注：真实 3D 世界坐标中的红色尺寸杆、箭头和端点引线。
-   文字由 CSS2DRenderer 负责，在任何镜头缩放下都保持浏览器字体的清晰度。 */
+/* 物像高度标注必须与物/像平面共面：
+   光具座长度方向为 x，图案所在平面为 y-z。
+   两根尺寸界线沿 z 从图案的左右边缘延伸；竖直尺寸线沿 y。
+   绝不再沿 x 向光具座右端挪动 3~4 cm，防止用户截图中的标注漂移。
+*/
 const DIM_RED=0xe34256;
 function makeHeightMarker(){
   const root=new THREE.Group();scene.add(root);
   const mat=new THREE.MeshBasicMaterial({color:DIM_RED,depthTest:false});
-  const bar=new THREE.Mesh(new THREE.CylinderGeometry(.055,.055,1,12),mat);
+  const bar=new THREE.Mesh(new THREE.CylinderGeometry(.065,.065,1,12),mat);
   bar.renderOrder=17;root.add(bar);
   const dash=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineDashedMaterial({
     color:DIM_RED,dashSize:.38,gapSize:.24,depthTest:false
   }));
   dash.renderOrder=17;root.add(dash);
-  const tipTop=new THREE.Mesh(new THREE.ConeGeometry(.26,.58,14),mat);
-  const tipBottom=new THREE.Mesh(new THREE.ConeGeometry(.26,.58,14),mat);
+  const tipTop=new THREE.Mesh(new THREE.ConeGeometry(.23,.52,14),mat);
+  const tipBottom=new THREE.Mesh(new THREE.ConeGeometry(.23,.52,14),mat);
   tipTop.renderOrder=tipBottom.renderOrder=18;
   tipBottom.rotation.z=Math.PI;root.add(tipTop,tipBottom);
-  const leadTop=new THREE.Mesh(new THREE.CylinderGeometry(.033,.033,1,10),mat);
-  const leadBottom=new THREE.Mesh(new THREE.CylinderGeometry(.033,.033,1,10),mat);
-  leadTop.rotation.z=leadBottom.rotation.z=Math.PI/2;
+  const leadTop=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,1,10),mat);
+  const leadBottom=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,1,10),mat);
+  // 圆柱默认轴线沿 y；旋转到 z，与物像的 y-z 平面共面。
+  leadTop.rotation.x=leadBottom.rotation.x=Math.PI/2;
   leadTop.renderOrder=leadBottom.renderOrder=18;root.add(leadTop,leadBottom);
-  const text=sharpLabel('','scene-label--measure');
+  const text=sharpLabel('','scene-label--measure-anchor');
+  const caption=document.createElement('span');
+  caption.className='scene-label--measure';
+  text.element.appendChild(caption);
   root.add(text);
-  return {root,bar,dash,tipTop,tipBottom,leadTop,leadBottom,text};
+  return {root,bar,dash,tipTop,tipBottom,leadTop,leadBottom,text,caption};
 }
 const objectHeightMarker=makeHeightMarker();
 const imageHeightMarker=makeHeightMarker();
 const overflowHeightText=sharpLabel('','scene-label--measure scene-label--theory');
 scene.add(overflowHeightText);
-function positionHeightMarker(m,x,yBottom,yTop,z,leadLen,label,dashed=false){
+/** 世界坐标 xPlane 是物/像所在平面的 x，不是沿光具座向后偏移的距离。
+ *  zEdge 是图案外侧的引线起点，zDimension 是紧邻板侧边的尺寸竖线。
+ *  两根界线严格在 yBottom / yTop，呈 ├─┤ 形式连接到尺寸竖线。
+ */
+function positionHeightMarker(m,xPlane,yBottom,yTop,zEdge,zDimension,label,dashed=false){
   const height=yTop-yBottom;
   if(!Number.isFinite(height)||height<=0){m.root.visible=false;m.text.element.style.display='none';return;}
   m.root.visible=true;
   m.text.element.style.display='';
-  m.root.position.set(x,yBottom,z);
-  m.bar.visible=!dashed;m.bar.scale.y=height;m.bar.position.y=height/2;
+  m.root.position.set(xPlane,yBottom,zDimension);
+  m.bar.visible=!dashed;
+  m.bar.scale.y=height;
+  m.bar.position.y=height/2;
   m.dash.visible=dashed;
   if(dashed){
     m.dash.geometry.dispose();
@@ -1159,14 +1175,22 @@ function positionHeightMarker(m,x,yBottom,yTop,z,leadLen,label,dashed=false){
     ]);
     m.dash.computeLineDistances();
   }
-  m.tipTop.position.set(0,height-.29,0);
-  m.tipBottom.position.set(0,.29,0);
-  [m.leadBottom,m.leadTop].forEach((p,i)=>{
-    p.scale.y=Math.abs(leadLen);p.position.set(leadLen/2,i?height:0,0);
+  const tipSize=Math.min(1,height/.95);
+  m.tipTop.scale.setScalar(tipSize);
+  m.tipBottom.scale.setScalar(tipSize);
+  m.tipTop.position.set(0,height-.26*tipSize,0);
+  m.tipBottom.position.set(0,.26*tipSize,0);
+  // 引线贴着真实板面：x 坐标恒等于尺寸线 x，两端 y 完全匹配像高。
+  const midZ=(zEdge-zDimension)/2;
+  const extLength=Math.abs(zDimension-zEdge)+.16;
+  [m.leadBottom,m.leadTop].forEach((line,i)=>{
+    line.scale.y=extLength;
+    line.position.set(0,i?height:0,midZ);
   });
-  m.text.element.textContent=label;
-  m.text.element.classList.toggle('scene-label--theory',dashed);
-  m.text.position.set(leadLen>0?-2.1:2.2,height/2,0);
+  m.caption.textContent=label;
+  m.caption.classList.toggle('scene-label--theory',dashed);
+  // 标签紧挨同一条尺寸竖线，避免独立飘在光具座旁。
+  m.text.position.set(0,height/2,0);
 }
 function updateHeightMarkers(){
   const obj=measuredHeights(),img=lensImage(),lit=uncoverFrac();
@@ -1183,8 +1207,10 @@ function updateHeightMarkers(){
   if(updateHeightMarkers._key===key)return;
   updateHeightMarkers._key=key;
   const top=AX+obj.objectTop,bottom=AX+obj.objectBottom;
-  positionHeightMarker(objectHeightMarker,X(-P.objDist)-3.5,bottom,top,OBJ_W/2+1.9,
-    3.1,`H = ${obj.objectHeight.toFixed(2)} cm`);
+  // 物体纹理在卡片 +x 正面，尺寸线离同一平面仅 0.08 cm。
+  const objectPlaneX=X(-P.objDist)+OBJ_D/2+.08;
+  positionHeightMarker(objectHeightMarker,objectPlaneX,bottom,top,
+    OBJ_W/2-.65,OBJ_W/2+.55,`H = ${obj.objectHeight.toFixed(2)} cm`);
   imageHeightMarker.root.visible=false;overflowHeightText.visible=false;
   imageHeightMarker.text.element.style.display='none';
   overflowHeightText.element.style.display='none';
@@ -1200,22 +1226,26 @@ function updateHeightMarkers(){
       overflowHeightText.position.set(X(-P.objDist)/2,AX+11,5);
       return;
     }
-    positionHeightMarker(imageHeightMarker,X(img.v)+4,AX+lower,AX+upper,
-      OBJ_W/2+2.4,-3.1,`虚像 H′ = ${size.toFixed(2)} cm`,true);
+    const halfVirtualWidth=OBJ_W/2*Math.abs(img.m);
+    // 虚像平面随物距移动，不让尺寸线留在光屏位置。
+    positionHeightMarker(imageHeightMarker,X(img.v)+OBJ_D/2+.08,
+      AX+lower,AX+upper,halfVirtualWidth-.55,halfVirtualWidth+.55,
+      `虚像 H′ = ${size.toFixed(2)} cm`,true);
     return;
   }
-  // 对焦且屏内完整时为实际可观察的 H′；其他情形标注理论值（虚线）。
   const focused=sharpness().s>=.78 && lit>0 &&
     obj.imageHeight<=SCREEN_H && obj.imageBottom>=-SCREEN_H/2 && obj.imageTop<=SCREEN_H/2;
-  if(size>19 || obj.imageBottom< -13 || obj.imageTop>13){
+  if(size>19||obj.imageBottom<-13||obj.imageTop>13){
     overflowHeightText.visible=true;
     overflowHeightText.element.style.display='';
     overflowHeightText.element.textContent=`理论 H′ = ${size.toFixed(2)} cm · 超出光屏`;
     overflowHeightText.position.set(THREE.MathUtils.clamp(X(P.screen)+3,-10,24),AX+11,4.5);
     return;
   }
-  positionHeightMarker(imageHeightMarker,X(P.screen)+4.2,
-    AX+obj.imageBottom,AX+obj.imageTop,SCREEN_W/2+1.65,-3.1,
+  // 光屏发光贴图在 x=屏位置-0.245；上下两根尺寸界线从屏面边缘引出，沿 z 延伸约 1.25 cm。
+  const screenPlaneX=X(P.screen)+scrMesh.position.x-.08;
+  positionHeightMarker(imageHeightMarker,screenPlaneX,AX+obj.imageBottom,AX+obj.imageTop,
+    SCREEN_W/2-.65,SCREEN_W/2+.60,
     `${focused?'':'理论 '}H′ = ${size.toFixed(2)} cm`,!focused);
 }
 /* 焦点 / 2F 标记：蓝色系，F 浅、2F 深，加大点与标签 */
