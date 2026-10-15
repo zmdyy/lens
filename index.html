@@ -1209,7 +1209,7 @@ function updateHeightMarkers(){
     overflowHeightText.visible=true;
     overflowHeightText.element.style.display='';
     overflowHeightText.element.textContent=`理论 H′ = ${size.toFixed(2)} cm · 超出光屏`;
-    overflowHeightText.position.set(X(P.screen)+3,AX+11,4.5);
+    overflowHeightText.position.set(THREE.MathUtils.clamp(X(P.screen)+3,-10,24),AX+11,4.5);
     return;
   }
   positionHeightMarker(imageHeightMarker,X(P.screen)+4.2,
