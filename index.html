@@ -248,7 +248,7 @@
 
       <section class="glass" id="measureCard">
         <h2>物高与像高 · 实验测量</h2>
-        <div class="hint">先在 3D 装置旁的竖直刻度尺上读出图案高度，再填写读数并比较。刻度分度值 1 mm；光屏需承接完整、清晰的实像。</div>
+        <div class="hint">先在 3D 装置旁的竖直刻度尺上读出图案高度，再填写读数并比较。刻度分度值 1 mm；光屏需承接完整、清晰的实像。2D 光路箭头表示离轴点，不作为图案尺量高度。</div>
         <div class="btns" style="margin-top:9px"><button id="bRulers" type="button">📏 隐藏测量尺</button><button id="bMeasureReveal" type="button">查看参考值</button></div>
         <div class="measure-status" id="measureState" style="margin-top:7px">调整光屏至清晰成像后开始测量。</div>
         <div class="measure-grid">
@@ -940,10 +940,10 @@ function drawScreenTexture(){
   const cm2px=H/12.4;
   x.strokeStyle='#94a3b8'; x.setLineDash([4,4]); x.beginPath(); x.moveTo(18,H/2); x.lineTo(W-18,H/2); x.stroke(); x.setLineDash([]);
   if(P.cover>=1){
-    x.fillStyle='#334155'; x.font='bold 20px sans-serif'; x.textAlign='center';
+    x.fillStyle=P.dark?'#eef4ff':'#e9f1fa'; x.font='bold 20px sans-serif'; x.textAlign='center';
     x.fillText('透镜被完全挡住 · 屏上无像',W/2,H/2);
   }else if(kind!=='real' || !isFinite(m)){
-    x.fillStyle='#334155'; x.font='bold 20px sans-serif'; x.textAlign='center';
+    x.fillStyle=P.dark?'#eef4ff':'#e9f1fa'; x.font='bold 20px sans-serif'; x.textAlign='center';
     x.fillText('虚像 · 屏上无像',W/2,H/2);
   }else{
     const blur=Math.min(22,d*2.4);
