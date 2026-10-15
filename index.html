@@ -1072,6 +1072,7 @@ $('bMeasureToggle').onclick=()=>{
   $('bMeasureToggle').setAttribute('aria-expanded',String(showMeasurement));
   $('measureChevron').textContent=showMeasurement?'收起 ▴':'展开 ▾';
   if(showMeasurement)updateMeasurementUI();
+  if(typeof updateHeightMarkers==='function')updateHeightMarkers();
 };
 function updateMeasurementUI(){
   if(!showMeasurement)return;
@@ -1087,7 +1088,9 @@ function updateMeasurementUI(){
     return;
   }
   const hi=Math.abs(img.m)*a.objectHeight;
-  label.textContent=img.kind==='virtual'?'虚像理论高度 H′':'像的理论高度 H′';
+  const actuallyOnScreen=img.kind==='real' && bright>0 && sharpness().s>=.78 &&
+    a.imageHeight<=SCREEN_H && a.imageBottom>=-SCREEN_H/2 && a.imageTop<=SCREEN_H/2;
+  label.textContent=img.kind==='virtual'?'虚像理论高度 H′':(actuallyOnScreen?'光屏上像高 H′':'理论像高 H′');
   out.textContent=hi.toFixed(2)+' cm';
   const ratio=hi/a.objectHeight;
   const equal=Math.abs(ratio-1)<.001;
@@ -1104,6 +1107,98 @@ function updateMeasurementUI(){
   info.push('H 为物体图案的真实高度，不等于“离轴高度 h”。');
   note.textContent=info.join(' ');
 }
+/* 高度尺寸标注：真实 3D 世界坐标中的红色尺寸杆、箭头和端点引线。
+   文字由 CSS2DRenderer 负责，在任何镜头缩放下都保持浏览器字体的清晰度。 */
+const DIM_RED=0xe34256;
+function makeHeightMarker(){
+  const root=new THREE.Group();scene.add(root);
+  const mat=new THREE.MeshBasicMaterial({color:DIM_RED,depthTest:false});
+  const bar=new THREE.Mesh(new THREE.CylinderGeometry(.055,.055,1,12),mat);
+  bar.renderOrder=17;root.add(bar);
+  const dash=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineDashedMaterial({
+    color:DIM_RED,dashSize:.38,gapSize:.24,depthTest:false
+  }));
+  dash.renderOrder=17;root.add(dash);
+  const tipTop=new THREE.Mesh(new THREE.ConeGeometry(.26,.58,14),mat);
+  const tipBottom=new THREE.Mesh(new THREE.ConeGeometry(.26,.58,14),mat);
+  tipTop.renderOrder=tipBottom.renderOrder=18;
+  tipBottom.rotation.z=Math.PI;root.add(tipTop,tipBottom);
+  const leadTop=new THREE.Mesh(new THREE.CylinderGeometry(.033,.033,1,10),mat);
+  const leadBottom=new THREE.Mesh(new THREE.CylinderGeometry(.033,.033,1,10),mat);
+  leadTop.rotation.z=leadBottom.rotation.z=Math.PI/2;
+  leadTop.renderOrder=leadBottom.renderOrder=18;root.add(leadTop,leadBottom);
+  const text=sharpLabel('','scene-label--measure');
+  root.add(text);
+  return {root,bar,dash,tipTop,tipBottom,leadTop,leadBottom,text};
+}
+const objectHeightMarker=makeHeightMarker();
+const imageHeightMarker=makeHeightMarker();
+const overflowHeightText=sharpLabel('','scene-label--measure scene-label--theory');
+scene.add(overflowHeightText);
+function positionHeightMarker(m,x,yBottom,yTop,z,leadLen,label,dashed=false){
+  const height=yTop-yBottom;
+  if(!Number.isFinite(height)||height<=0){m.root.visible=false;return;}
+  m.root.visible=true;m.root.position.set(x,yBottom,z);
+  m.bar.visible=!dashed;m.bar.scale.y=height;m.bar.position.y=height/2;
+  m.dash.visible=dashed;
+  if(dashed){
+    m.dash.geometry.dispose();
+    m.dash.geometry=new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0,0,0),new THREE.Vector3(0,height,0)
+    ]);
+    m.dash.computeLineDistances();
+  }
+  m.tipTop.position.set(0,height-.29,0);
+  m.tipBottom.position.set(0,.29,0);
+  [m.leadBottom,m.leadTop].forEach((p,i)=>{
+    p.scale.y=Math.abs(leadLen);p.position.set(leadLen/2,i?height:0,0);
+  });
+  m.text.element.textContent=label;
+  m.text.element.classList.toggle('scene-label--theory',dashed);
+  m.text.position.set(leadLen>0?-2.1:2.2,height/2,0);
+}
+function updateHeightMarkers(){
+  const obj=measuredHeights(),img=lensImage(),lit=uncoverFrac();
+  if(!showMeasurement){
+    objectHeightMarker.root.visible=imageHeightMarker.root.visible=overflowHeightText.visible=false;
+    return;
+  }
+  const key=[P.objDist.toFixed(2),P.objH.toFixed(2),P.focal.toFixed(2),
+    P.screen.toFixed(2),P.cover.toFixed(3),P.objType].join('|');
+  if(updateHeightMarkers._key===key)return;
+  updateHeightMarkers._key=key;
+  const top=AX+obj.objectTop,bottom=AX+obj.objectBottom;
+  positionHeightMarker(objectHeightMarker,X(-P.objDist)-3.5,bottom,top,OBJ_W/2+1.9,
+    3.1,`H = ${obj.objectHeight.toFixed(2)} cm`);
+  imageHeightMarker.root.visible=false;overflowHeightText.visible=false;
+  if(img.kind==='none'||!Number.isFinite(img.m))return;
+  const size=Math.abs(img.m)*obj.objectHeight;
+  if(img.kind==='virtual'){
+    const lower=Math.min(img.m*obj.objectBottom,img.m*obj.objectTop);
+    const upper=Math.max(img.m*obj.objectBottom,img.m*obj.objectTop);
+    if(Math.abs(img.v)>68||size>19||!Number.isFinite(lower)||!Number.isFinite(upper)){
+      overflowHeightText.visible=true;
+      overflowHeightText.element.textContent=`理论 H′ = ${size.toFixed(2)} cm · 超出视野`;
+      overflowHeightText.position.set(X(-P.objDist)/2,AX+11,5);
+      return;
+    }
+    positionHeightMarker(imageHeightMarker,X(img.v)+4,AX+lower,AX+upper,
+      OBJ_W/2+2.4,-3.1,`虚像 H′ = ${size.toFixed(2)} cm`,true);
+    return;
+  }
+  // 对焦且屏内完整时为实际可观察的 H′；其他情形标注理论值（虚线）。
+  const focused=sharpness().s>=.78 && lit>0 &&
+    obj.imageHeight<=SCREEN_H && obj.imageBottom>=-SCREEN_H/2 && obj.imageTop<=SCREEN_H/2;
+  if(size>19 || obj.imageBottom< -13 || obj.imageTop>13){
+    overflowHeightText.visible=true;
+    overflowHeightText.element.textContent=`理论 H′ = ${size.toFixed(2)} cm · 超出光屏`;
+    overflowHeightText.position.set(X(P.screen)+3,AX+11,4.5);
+    return;
+  }
+  positionHeightMarker(imageHeightMarker,X(P.screen)+4.2,
+    AX+obj.imageBottom,AX+obj.imageTop,SCREEN_W/2+1.65,-3.1,
+    `${focused?'':'理论 '}H′ = ${size.toFixed(2)} cm`,!focused);
+}
 /* 焦点 / 2F 标记：蓝色系，F 浅、2F 深，加大点与标签 */
 const COL_F='#7eb6ff', COL_2F='#1d4ed8';
 function labelSprite(txt,color){
@@ -1113,12 +1208,14 @@ function labelSprite(txt,color){
 const marks=[];
 function buildMarks(){
   marks.forEach(m=>scene.remove(m));marks.length=0;
-  const y=AX,f=P.focal,s=WORLD/44;
+  const y=AX,f=P.focal;
   [['F',-f,COL_F],['F',f,COL_F],['2F',-2*f,COL_2F],['2F',2*f,COL_2F]].forEach(([t,cm,col])=>{
-    const r=t==='2F'?0.62:0.52;
-    const dot=new THREE.Mesh(new THREE.SphereGeometry(r,18,18),new THREE.MeshBasicMaterial({color:col}));
+    const r=t==='2F'?.62:.52;
+    const dot=new THREE.Mesh(new THREE.SphereGeometry(r,18,18),
+      new THREE.MeshBasicMaterial({color:col}));
     dot.position.set(X(cm),y,0);scene.add(dot);marks.push(dot);
-    const sp=labelSprite(t,col);sp.position.set(X(cm),y-2.7,0);scene.add(sp);marks.push(sp);
+    const label=labelSprite(t,col);label.position.set(X(cm),y-2.7,0);
+    scene.add(label);marks.push(label);
   });
 }
 buildMarks();
@@ -1341,6 +1438,7 @@ function update3D(dt,t){
   lensMesh.scale.x=lensHalfThick();
   lensGlint.position.x=lensMesh.scale.x*0.9;
   layoutCoverCard();
+  updateHeightMarkers();
 }
 let markObjs=[];
 function buildMarksPos(s){
