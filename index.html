@@ -855,7 +855,7 @@ const FIGURE_BASE_CM=OBJ_H*0.78; // drawFigure 的 h 参数，物面图案基准
 // 使用同一图案绘制函数和边界来校准真实 3D 尺、光屏像尺与放大率。
 function figureBounds(){
   const t=P.objType;
-  if(t==='f')return [-.2736,.3292];
+  if(t==='f')return [-.286,.286]; // 根据 F 横竖笔画和描边的上下边界计算
   if(t==='arrow')return [-.5,.4328];
   if(t==='star')return [-.46,.3721];
   if(t==='candle')return [-.559,.45];
