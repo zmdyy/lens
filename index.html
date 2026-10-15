@@ -980,6 +980,8 @@ function layoutVirtualImage(){
   const img=lensImage();
   const show=img.kind==='virtual' && isFinite(img.v) && isFinite(img.m);
   virtGroup.visible=show;
+  const virtualCaption=virtGroup.getObjectByName('virtLbl');
+  if(virtualCaption?.isCSS2DObject)virtualCaption.element.style.display=show?'':'none';
   if(!show) return;
   const mAbs=Math.abs(img.m);
   virtGroup.position.set(X(img.v),AX,0.18);
@@ -1142,8 +1144,10 @@ const overflowHeightText=sharpLabel('','scene-label--measure scene-label--theory
 scene.add(overflowHeightText);
 function positionHeightMarker(m,x,yBottom,yTop,z,leadLen,label,dashed=false){
   const height=yTop-yBottom;
-  if(!Number.isFinite(height)||height<=0){m.root.visible=false;return;}
-  m.root.visible=true;m.root.position.set(x,yBottom,z);
+  if(!Number.isFinite(height)||height<=0){m.root.visible=false;m.text.element.style.display='none';return;}
+  m.root.visible=true;
+  m.text.element.style.display='';
+  m.root.position.set(x,yBottom,z);
   m.bar.visible=!dashed;m.bar.scale.y=height;m.bar.position.y=height/2;
   m.dash.visible=dashed;
   if(dashed){
@@ -1166,6 +1170,9 @@ function updateHeightMarkers(){
   const obj=measuredHeights(),img=lensImage(),lit=uncoverFrac();
   if(!showMeasurement){
     objectHeightMarker.root.visible=imageHeightMarker.root.visible=overflowHeightText.visible=false;
+    objectHeightMarker.text.element.style.display='none';
+    imageHeightMarker.text.element.style.display='none';
+    overflowHeightText.element.style.display='none';
     updateHeightMarkers._key=null;
     return;
   }
@@ -1177,6 +1184,8 @@ function updateHeightMarkers(){
   positionHeightMarker(objectHeightMarker,X(-P.objDist)-3.5,bottom,top,OBJ_W/2+1.9,
     3.1,`H = ${obj.objectHeight.toFixed(2)} cm`);
   imageHeightMarker.root.visible=false;overflowHeightText.visible=false;
+  imageHeightMarker.text.element.style.display='none';
+  overflowHeightText.element.style.display='none';
   if(img.kind==='none'||!Number.isFinite(img.m))return;
   const size=Math.abs(img.m)*obj.objectHeight;
   if(img.kind==='virtual'){
@@ -1184,6 +1193,7 @@ function updateHeightMarkers(){
     const upper=Math.max(img.m*obj.objectBottom,img.m*obj.objectTop);
     if(Math.abs(img.v)>68||size>19||!Number.isFinite(lower)||!Number.isFinite(upper)){
       overflowHeightText.visible=true;
+      overflowHeightText.element.style.display='';
       overflowHeightText.element.textContent=`理论 H′ = ${size.toFixed(2)} cm · 超出视野`;
       overflowHeightText.position.set(X(-P.objDist)/2,AX+11,5);
       return;
@@ -1197,6 +1207,7 @@ function updateHeightMarkers(){
     obj.imageHeight<=SCREEN_H && obj.imageBottom>=-SCREEN_H/2 && obj.imageTop<=SCREEN_H/2;
   if(size>19 || obj.imageBottom< -13 || obj.imageTop>13){
     overflowHeightText.visible=true;
+    overflowHeightText.element.style.display='';
     overflowHeightText.element.textContent=`理论 H′ = ${size.toFixed(2)} cm · 超出光屏`;
     overflowHeightText.position.set(X(P.screen)+3,AX+11,4.5);
     return;
