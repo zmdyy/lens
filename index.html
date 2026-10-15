@@ -1072,6 +1072,7 @@ $('bMeasureToggle').onclick=()=>{
   $('bMeasureToggle').setAttribute('aria-expanded',String(showMeasurement));
   $('measureChevron').textContent=showMeasurement?'收起 ▴':'展开 ▾';
   if(showMeasurement)updateMeasurementUI();
+  updateHeightMarkers._key=null;
   if(typeof updateHeightMarkers==='function')updateHeightMarkers();
 };
 function updateMeasurementUI(){
@@ -1161,6 +1162,7 @@ function updateHeightMarkers(){
   const obj=measuredHeights(),img=lensImage(),lit=uncoverFrac();
   if(!showMeasurement){
     objectHeightMarker.root.visible=imageHeightMarker.root.visible=overflowHeightText.visible=false;
+    updateHeightMarkers._key=null;
     return;
   }
   const key=[P.objDist.toFixed(2),P.objH.toFixed(2),P.focal.toFixed(2),
