@@ -707,7 +707,7 @@ l.computeLineDistances();scene.add(l);}
 /* 物体：PhET 风格带画框卡片（铅笔/箭头/星星/蜡烛） */
 function rr(x,px,py,w,h,r){x.beginPath();x.moveTo(px+r,py);x.arcTo(px+w,py,px+w,py+h,r);x.arcTo(px+w,py+h,px,py+h,r);x.arcTo(px,py+h,px,py,r);x.arcTo(px,py,px+w,py,r);x.closePath();}
 function drawFigure(x,cx,cy,h,flip,alpha=1){
-  x.save(); x.translate(cx,cy); if(flip) x.scale(1,-1); x.globalAlpha=alpha;
+  x.save(); x.translate(cx,cy); if(flip) x.scale(1,-1); x.globalAlpha*=alpha;
   x.lineJoin='round'; x.lineCap='round';
   const t=P.objType, w=h*0.42;
   if(t==='arrow'){
@@ -805,6 +805,8 @@ objTex.colorSpace=THREE.SRGBColorSpace;
 let objCard, objStand;
 function buildObject(){
   objGroup.clear();
+  // 切换物体类型时重建发光图案，保留已创建的测量尺。
+  if(objGroup.userData.measureRuler)objGroup.add(objGroup.userData.measureRuler);
   paintCard(objCtx,256,360,false,0,false); objTex.needsUpdate=true;
   const matFace=new THREE.MeshBasicMaterial({map:objTex});
   const matSide=new THREE.MeshStandardMaterial({color:0xc5ccd6,roughness:.6});
@@ -999,10 +1001,11 @@ function makeVerticalRuler(cmMax){
 const objectRuler=makeVerticalRuler(6.0);
 const imageRuler=makeVerticalRuler(12.0);
 objGroup.add(objectRuler);
+objGroup.userData.measureRuler=objectRuler;
 scrGroup.add(imageRuler);
 let rulersShown=true;
 function layoutMeasurementRulers(){
-  const m=measuredHeights(), {s}=sharpness();
+  const m=measuredHeights();
   objectRuler.visible=rulersShown;
   objectRuler.position.set(0,m.objectBottom,OBJ_W/2+1.12);
   const screenFits=m.kind==='real' && m.imageHeight<=12 &&
