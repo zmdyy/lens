@@ -185,12 +185,12 @@
   .scene-label--carrier{font-size:17px;font-weight:800;color:white;background:#14191f;border:1px solid #657081;border-radius:9px;padding:3px 10px;text-shadow:0 1px 1px #000;box-shadow:0 1px 3px #0006}
   .scene-label--virtual{font-size:17px;font-weight:800;color:#ead7ff;background:rgba(49,25,85,.86);border-radius:6px;padding:3px 7px;text-shadow:0 1px 3px #110d18}
   .scene-label--ruler{font-size:14px;line-height:1;color:#fff;font-weight:800;background:rgba(10,13,17,.92);border-radius:3px;padding:1px 2px;font-variant-numeric:tabular-nums;text-shadow:0 1px 1px black}
-  .scene-label--measure{font-size:18px;font-weight:800;color:#bf2135;background:rgba(255,255,255,.96);border:1px solid #f3afb5;border-radius:6px;padding:5px 8px;box-shadow:0 2px 8px #0005;font-variant-numeric:tabular-nums}
-  html[data-theme="dark"] .scene-label--measure{background:rgba(21,32,48,.95);color:#ff818b;border-color:#eb7783}
+  .scene-label--measure{font-size:24px;font-weight:900;color:#bc1c35;background:rgba(255,255,255,.97);border:2px solid #ed5368;border-radius:8px;padding:7px 11px;box-shadow:0 2px 10px #0007;font-variant-numeric:tabular-nums}
+  html[data-theme="dark"] .scene-label--measure{background:rgba(21,32,48,.97);color:#ff949f;border-color:#ff687b}
   .scene-label--theory{border-style:dashed}
   /* 文字锚点精确锁定在尺寸线上，内部标签向旁侧偏移 10px，不能再离开元件。 */
   .scene-label--measure-anchor{width:0;height:0;overflow:visible}
-  .scene-label--measure-anchor>.scene-label--measure{position:absolute;left:10px;top:0;transform:translateY(-50%);display:block}
+  .scene-label--measure-anchor>.scene-label--measure{position:absolute;left:14px;top:0;transform:translateY(-50%);display:block}
   #c3d>.label-renderer{position:absolute;inset:0;pointer-events:none;z-index:4}
   kbd{background:var(--chip-bg);border:1px solid var(--stroke);border-bottom-width:2px;border-radius:6px;padding:0 6px;font-size:12px;color:var(--chip-text)}
   #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--toast-bg);border:1px solid #f0c419;color:var(--toast-text);font-size:12px;padding:9px 16px;border-radius:999px;transition:.35s;pointer-events:none;z-index:99;box-shadow:0 8px 24px rgba(16,24,40,.12)}
@@ -867,11 +867,36 @@ const FIGURE_BASE_CM=OBJ_H*0.78; // drawFigure 的 h 参数，物面图案基准
 // 使用同一图案绘制函数和边界来校准真实 3D 尺、光屏像尺与放大率。
 function figureBounds(){
   const t=P.objType;
-  if(t==='f')return [-.286,.286]; // 根据 F 横竖笔画和描边的上下边界计算
+  if(t==='f')return [-.286,.286]; // F 笔画真实上下缘（包含描边）
   if(t==='arrow')return [-.5,.4328];
   if(t==='star')return [-.46,.3721];
   if(t==='candle')return [-.559,.45];
   return [-.50,.485]; // pencil
+}
+/** 端点在物体图案内部的 z 坐标，非外框边缘。
+ * Canvas 图案 x 坐标通过贴图映射成场景 z，选取真实最高/最低笔画上的点。
+ * 3D 图案、投影图案都使用相同 drawFigure 几何，所以共同以 FIGURE_BASE_CM 标定。
+ */
+function figureTipZ(){
+  const h=FIGURE_BASE_CM, t=P.objType;
+  if(t==='f'){
+    // F 的最高横笔及最下方竖笔均包含左侧笔画。
+    const stalk=h*.42*1.15*.34;
+    return {top:stalk,bottom:stalk};
+  }
+  if(t==='star'){
+    // 上端是星尖 x=0；最低点在五角星外部一侧的两个对称星尖。
+    return {top:0,bottom:h*.42*Math.cos(Math.PI*.3)};
+  }
+  if(t==='pencil'){
+    // 顶端铅笔尖在中心，下端橡皮擦外轮廓的左侧。
+    return {top:0,bottom:h*.42*.34};
+  }
+  if(t==='candle'){
+    // 顶端火尖轻微摆动时仍以标称中心为测量基准。
+    return {top:0,bottom:0};
+  }
+  return {top:0,bottom:0}; // 箭头
 }
 function measuredHeights(){
   const [lo,hi]=figureBounds();
@@ -1143,45 +1168,48 @@ const DIM_RED=0xe34256;
 function makeHeightMarker(){
   const root=new THREE.Group();scene.add(root);
   const mat=new THREE.MeshBasicMaterial({color:DIM_RED,depthTest:false});
-  const bar=new THREE.Mesh(new THREE.CylinderGeometry(.065,.065,1,12),mat);
+  const bar=new THREE.Mesh(new THREE.CylinderGeometry(.115,.115,1,16),mat);
   bar.renderOrder=17;root.add(bar);
   const dash=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineDashedMaterial({
-    color:DIM_RED,dashSize:.38,gapSize:.24,depthTest:false
+    color:DIM_RED,dashSize:.55,gapSize:.20,linewidth:3,depthTest:false
   }));
   dash.renderOrder=17;root.add(dash);
-  const tipTop=new THREE.Mesh(new THREE.ConeGeometry(.23,.52,14),mat);
-  const tipBottom=new THREE.Mesh(new THREE.ConeGeometry(.23,.52,14),mat);
+  const tipTop=new THREE.Mesh(new THREE.ConeGeometry(.34,.74,18),mat);
+  const tipBottom=new THREE.Mesh(new THREE.ConeGeometry(.34,.74,18),mat);
   tipTop.renderOrder=tipBottom.renderOrder=18;
   tipBottom.rotation.z=Math.PI;root.add(tipTop,tipBottom);
-  const leadTop=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,1,10),mat);
-  const leadBottom=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,1,10),mat);
+  const leadTop=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,1,14),mat);
+  const leadBottom=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,1,14),mat);
   // 圆柱默认轴线沿 y；旋转到 z，与物像的 y-z 平面共面。
   leadTop.rotation.x=leadBottom.rotation.x=Math.PI/2;
   leadTop.renderOrder=leadBottom.renderOrder=18;root.add(leadTop,leadBottom);
+  // 图案端点的小红圆点，清楚表示从哪里开始量，而不是从卡片/白屏的边框开始。
+  const endTop=new THREE.Mesh(new THREE.SphereGeometry(.15,16,10),mat);
+  const endBottom=new THREE.Mesh(new THREE.SphereGeometry(.15,16,10),mat);
+  endTop.renderOrder=endBottom.renderOrder=19;
+  root.add(endTop,endBottom);
   const text=sharpLabel('','scene-label--measure-anchor');
   const caption=document.createElement('span');
   caption.className='scene-label--measure';
   text.element.appendChild(caption);
   root.add(text);
-  return {root,bar,dash,tipTop,tipBottom,leadTop,leadBottom,text,caption};
+  return {root,bar,dash,tipTop,tipBottom,leadTop,leadBottom,endTop,endBottom,text,caption};
 }
 const objectHeightMarker=makeHeightMarker();
 const imageHeightMarker=makeHeightMarker();
 const overflowHeightText=sharpLabel('','scene-label--measure scene-label--theory');
 scene.add(overflowHeightText);
-/** 世界坐标 xPlane 是物/像所在平面的 x，不是沿光具座向后偏移的距离。
- *  zEdge 是图案外侧的引线起点，zDimension 是紧邻板侧边的尺寸竖线。
- *  两根界线严格在 yBottom / yTop，呈 ├─┤ 形式连接到尺寸竖线。
+/** 同一 y-z 平面中的真正尺寸线：
+ *  zTop/zBottom 必须来自物或像图案的最高/最低端点，而非卡片/光屏边界。
+ *  两根引线各自从端点出发，沿 z 延伸至竖直尺寸线。
  */
-function positionHeightMarker(m,xPlane,yBottom,yTop,zEdge,zDimension,label,dashed=false){
+function positionHeightMarker(m,xPlane,yBottom,yTop,zTop,zBottom,zDimension,label,dashed=false){
   const height=yTop-yBottom;
   if(!Number.isFinite(height)||height<=0){m.root.visible=false;m.text.element.style.display='none';return;}
   m.root.visible=true;
   m.text.element.style.display='';
   m.root.position.set(xPlane,yBottom,zDimension);
-  m.bar.visible=!dashed;
-  m.bar.scale.y=height;
-  m.bar.position.y=height/2;
+  m.bar.visible=!dashed;m.bar.scale.y=height;m.bar.position.y=height/2;
   m.dash.visible=dashed;
   if(dashed){
     m.dash.geometry.dispose();
@@ -1190,21 +1218,23 @@ function positionHeightMarker(m,xPlane,yBottom,yTop,zEdge,zDimension,label,dashe
     ]);
     m.dash.computeLineDistances();
   }
-  const tipSize=Math.min(1,height/.95);
-  m.tipTop.scale.setScalar(tipSize);
-  m.tipBottom.scale.setScalar(tipSize);
-  m.tipTop.position.set(0,height-.26*tipSize,0);
-  m.tipBottom.position.set(0,.26*tipSize,0);
-  // 引线贴着真实板面：x 坐标恒等于尺寸线 x，两端 y 完全匹配像高。
-  const midZ=(zEdge-zDimension)/2;
-  const extLength=Math.abs(zDimension-zEdge)+.16;
+  const headSize=Math.min(1,Math.max(.32,height/1.65));
+  m.tipTop.scale.setScalar(headSize);
+  m.tipBottom.scale.setScalar(headSize);
+  m.tipTop.position.set(0,height-.37*headSize,0);
+  m.tipBottom.position.set(0,.37*headSize,0);
+  const zPositions=[zBottom,zTop];
   [m.leadBottom,m.leadTop].forEach((line,i)=>{
-    line.scale.y=extLength;
-    line.position.set(0,i?height:0,midZ);
+    const startZ=zPositions[i];
+    const length=Math.abs(zDimension-startZ);
+    line.scale.y=Math.max(.01,length);
+    line.position.set(0,i?height:0,(startZ-zDimension)/2);
   });
+  // 红色圆点直接在物/像像素描边的极端点，不跟随边框侧缘。
+  m.endBottom.position.set(0,0,zBottom-zDimension);
+  m.endTop.position.set(0,height,zTop-zDimension);
   m.caption.textContent=label;
   m.caption.classList.toggle('scene-label--theory',dashed);
-  // 标签紧挨同一条尺寸竖线，避免独立飘在光具座旁。
   m.text.position.set(0,height/2,0);
 }
 function updateHeightMarkers(){
@@ -1222,10 +1252,12 @@ function updateHeightMarkers(){
   if(updateHeightMarkers._key===key)return;
   updateHeightMarkers._key=key;
   const top=AX+obj.objectTop,bottom=AX+obj.objectBottom;
-  // 物体纹理在卡片 +x 正面，尺寸线离同一平面仅 0.08 cm。
+  const tips=figureTipZ();
+  // 使用图案笔画的真实上下端点，不再从物体画框外缘发出红色引线。
   const objectPlaneX=X(-P.objDist)+OBJ_D/2+.08;
+  const objDimensionZ=Math.max(OBJ_W/2+.50,tips.top+.85,tips.bottom+.85);
   positionHeightMarker(objectHeightMarker,objectPlaneX,bottom,top,
-    OBJ_W/2-.65,OBJ_W/2+.55,`H = ${obj.objectHeight.toFixed(2)} cm`);
+    tips.top,tips.bottom,objDimensionZ,`H = ${obj.objectHeight.toFixed(2)} cm`);
   imageHeightMarker.root.visible=false;overflowHeightText.visible=false;
   imageHeightMarker.text.element.style.display='none';
   overflowHeightText.element.style.display='none';
@@ -1241,10 +1273,10 @@ function updateHeightMarkers(){
       overflowHeightText.position.set(X(-P.objDist)/2,AX+11,5);
       return;
     }
-    const halfVirtualWidth=OBJ_W/2*Math.abs(img.m);
-    // 虚像平面随物距移动，不让尺寸线留在光屏位置。
+    // 正立虚像：最高笔画仍对应物的最高笔画，无需交换上下端点。
+    const scale=Math.abs(img.m),virtualZ=Math.max(OBJ_W/2*scale+.50,tips.top*scale+.85,tips.bottom*scale+.85);
     positionHeightMarker(imageHeightMarker,X(img.v)+OBJ_D/2+.08,
-      AX+lower,AX+upper,halfVirtualWidth-.55,halfVirtualWidth+.55,
+      AX+lower,AX+upper,tips.top*scale,tips.bottom*scale,virtualZ,
       `虚像 H′ = ${size.toFixed(2)} cm`,true);
     return;
   }
@@ -1257,10 +1289,14 @@ function updateHeightMarkers(){
     overflowHeightText.position.set(THREE.MathUtils.clamp(X(P.screen)+3,-10,24),AX+11,4.5);
     return;
   }
-  // 光屏发光贴图在 x=屏位置-0.245；上下两根尺寸界线从屏面边缘引出，沿 z 延伸约 1.25 cm。
+  // 实像倒立：物体下端成像在光屏上端；物体上端成像在光屏下端。
+  // 引线从像本身的笔画端点(z≈0 或 F 的横竖笔画)直接出发，不从白屏边缘起画。
+  const imageScale=Math.abs(img.m);
+  const imgTipTop=tips.bottom*imageScale,imgTipBottom=tips.top*imageScale;
   const screenPlaneX=X(P.screen)+scrMesh.position.x-.08;
+  const imageDimensionZ=Math.max(SCREEN_W/2+.42,imgTipTop+.85,imgTipBottom+.85);
   positionHeightMarker(imageHeightMarker,screenPlaneX,AX+obj.imageBottom,AX+obj.imageTop,
-    SCREEN_W/2-.65,SCREEN_W/2+.60,
+    imgTipTop,imgTipBottom,imageDimensionZ,
     `${focused?'':'理论 '}H′ = ${size.toFixed(2)} cm`,!focused);
 }
 /* 焦点 / 2F 标记：蓝色系，F 浅、2F 深，加大点与标签 */
