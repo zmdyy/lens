@@ -117,8 +117,13 @@
   #main{flex:1;display:flex;min-height:0}
   #stages{flex:1;display:flex;flex-direction:column;min-width:0}
   .stage{position:relative;overflow:hidden}
-  #stage3d{flex:0 0 55%;border-bottom:1px solid var(--stroke);background:var(--stage-3d);transition:background .25s}
-  #stage2d{flex:0 0 45%;background:var(--stage-2d);transition:background .25s}
+  #stage3d{flex:0 0 60%;min-height:0;border-bottom:1px solid var(--stroke);background:var(--stage-3d);transition:background .25s}
+  #stage2d{flex:0 0 40%;min-height:0;background:var(--stage-2d);transition:background .25s}
+  #stages.only3d #stage3d{flex:1 1 100%;border-bottom:0}
+  #stages.only3d #stage2d{display:none}
+  .hdr-badges #b2d{white-space:nowrap;min-width:100px}
+  #stage3d .phet-bar{top:12px;right:12px}
+  #stage3d .phet-bar select{min-width:144px}
   .stage-label{position:absolute;left:12px;top:10px;z-index:5;display:flex;gap:8px;align-items:center;pointer-events:none}
   .stage-label span{font-size:11px;padding:5px 10px;border-radius:8px;background:var(--chip-bg);border:1px solid var(--stroke);color:var(--chip-text)}
   .stage-label em{font-style:normal;font-size:11px;color:var(--muted);background:var(--chip-bg);padding:5px 8px;border-radius:8px;border:1px solid var(--stroke)}
@@ -156,10 +161,15 @@
   #ruleTable th{color:var(--table-head-text);font-weight:600;background:var(--table-head-bg)}
   #ruleTable tr.active td{background:var(--table-active-bg);color:var(--table-active-text);font-weight:700;box-shadow:inset 0 0 0 1px #f0c419}
   .hint{font-size:13px;color:var(--muted);line-height:1.7}
-  .measure-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:10px 0}
-  .measure-grid label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px}
-  .measure-grid input{width:100%;min-width:0;padding:10px 8px;background:var(--input-bg);color:var(--input-text);border:1px solid var(--input-border);border-radius:8px;font-size:15px;font-variant-numeric:tabular-nums}
-  .measure-result{font-size:13px;line-height:1.75;margin-top:8px;color:var(--text)}
+  .measure-heading{width:100%;padding:3px 0 5px;margin:0;min-width:0;border:0;background:none!important;display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--h2-color);font-size:14px;font-weight:700;text-align:left;cursor:pointer}
+  .measure-heading:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  .measure-heading .chevron{font-size:14px;color:var(--muted)}
+  #measurementOutput[hidden]{display:none}
+  .measure-values{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:9px 0}
+  .measure-value{background:var(--output-bg);border:1px solid var(--output-border);border-radius:8px;padding:10px 7px;min-width:0}
+  .measure-value span{display:block;font-size:12px;color:var(--muted)}
+  .measure-value strong{display:block;color:var(--output-text);font-size:19px;font-variant-numeric:tabular-nums;margin-top:3px}
+  .measure-result{font-size:14px;font-weight:600;line-height:1.75;color:var(--text)}
   .measure-status{font-size:12px;color:var(--muted);line-height:1.65}
   .measure-light{display:flex;justify-content:space-between;align-items:center;margin-top:7px;font-size:13px;color:var(--text)}
   #lightBar{background:linear-gradient(90deg,#a16207,#facc15);height:100%;border-radius:99px;width:100%}
@@ -184,6 +194,7 @@
   <header>
     <div class="logo">🔭</div>
     <div class="hdr-badges">
+      <button class="badge" id="b2d" type="button" aria-pressed="true">隐藏 2D 光路图</button>
       <button class="badge" id="bDark" type="button">🌙 暗色</button>
       <span class="badge live">● <b id="hSharp">清晰度 100%</b></span>
     </div>
@@ -192,19 +203,19 @@
     <div id="stages">
       <div class="stage" id="stage3d">
         <div class="stage-label"><span>3D 实验装置 · THREE.JS</span><em>光具座 · 物体 → 凸透镜 → 光屏</em></div>
-        <div id="c3d"></div>
-      </div>
-      <div class="stage" id="stage2d">
-        <div class="stage-label"><span>2D光路图</span></div>
         <div class="phet-bar">
-          <select id="objType" title="物体类型">
-            <option value="pencil">✏️ Pencil 铅笔</option>
-            <option value="arrow">↑ Arrow 箭头</option>
-            <option value="star">★ Star 星星</option>
-            <option value="candle">🕯️ Candle 蜡烛</option>
+          <select id="objType" title="选择物体类型">
+            <option value="pencil">✏️ 铅笔</option>
+            <option value="arrow">↑ 箭头</option>
+            <option value="star">★ 星星</option>
+            <option value="candle">🕯️ 蜡烛</option>
             <option value="f">🔴 F 光源</option>
           </select>
         </div>
+        <div id="c3d"></div>
+      </div>
+      <div class="stage" id="stage2d">
+        <div class="stage-label"><span>2D 光路图</span></div>
         <canvas id="c2d"></canvas>
       </div>
     </div>
@@ -247,17 +258,17 @@
       </section>
 
       <section class="glass" id="measureCard">
-        <h2>物高与像高 · 实验测量</h2>
-        <div class="hint">先在 3D 装置旁的竖直刻度尺上读出图案高度，再填写读数并比较。刻度分度值 1 mm；光屏需承接完整、清晰的实像。2D 光路箭头表示离轴点，不作为图案尺量高度。</div>
-        <div class="btns" style="margin-top:9px"><button id="bRulers" type="button">📏 隐藏测量尺</button><button id="bMeasureReveal" type="button">查看参考值</button></div>
-        <div class="measure-status" id="measureState" style="margin-top:7px">调整光屏至清晰成像后开始测量。</div>
-        <div class="measure-grid">
-          <div><label for="mObj">物体图案高度 h（cm）</label><input type="number" min="0" max="30" step="0.1" id="mObj" placeholder="按刻度读数"></div>
-          <div><label for="mImg">光屏像高 h′（cm）</label><input type="number" min="0" max="30" step="0.1" id="mImg" placeholder="按刻度读数"></div>
+        <button class="measure-heading" id="bMeasureToggle" type="button" aria-expanded="false" aria-controls="measurementOutput">
+          <span>物高与像高 · 实验测量</span><span id="measureChevron" class="chevron">展开 ▾</span>
+        </button>
+        <div id="measurementOutput" hidden>
+          <div class="measure-values">
+            <div class="measure-value"><span>物体图案高度 H</span><strong id="measuredObj">—</strong></div>
+            <div class="measure-value"><span id="measuredImgLabel">像的高度 H′</span><strong id="measuredImg">—</strong></div>
+          </div>
+          <div class="measure-result" id="measureResult" aria-live="polite"></div>
+          <div class="measure-status" id="measureState" style="margin-top:6px"></div>
         </div>
-        <button id="bMeasureCompare" class="primary" type="button" style="width:100%">比较物高与像高</button>
-        <div id="measureResult" class="measure-result" aria-live="polite"></div>
-        <div id="measureReference" class="measure-status" hidden></div>
       </section>
       <section class="glass">
         <h2>四条特殊光线 · 独立开关</h2>
@@ -302,6 +313,7 @@ const P = {
   auto: false, autoDir: -1, track: true, bundle: true,
   cover: 0, // 0~1，不透明纸片从上沿往下挡透镜
   dark: localStorage.getItem('lensDark')==='1',
+  show2d: true,
 };
 const THEME={
   light:{scene:0xf5f5f5,grid:[0xc8cdd6,0xe4e7ec],ambient:.9,key:1.15,fill:.45,exposure:1.15},
@@ -433,6 +445,15 @@ $('sT').addEventListener('input',e=>{P.thick=+e.target.value;P.focal=fFromThick(
 $('sF').addEventListener('input',e=>{P.focal=+e.target.value;P.thick=Math.min(1.8,Math.max(.3,thickFromF(P.focal)));$('sT').value=P.thick;});
 $('sS').addEventListener('input',e=>{P.screen=+e.target.value;P.track=false;$('bTrack').textContent='📍 光屏追像：关';});
 $('objType').addEventListener('change',e=>{P.objType=e.target.value;buildObject();buildVirtualImage();});
+function sync2DLayout(){
+  $('stages').classList.toggle('only3d',!P.show2d);
+  $('b2d').textContent=P.show2d?'隐藏 2D 光路图':'显示 2D 光路图';
+  $('b2d').setAttribute('aria-pressed',String(P.show2d));
+  // CSS flex 高度发生变化后，Canvas WebGL 的像素尺寸必须重算。
+  resize3D();
+  if(P.show2d)resize2D();
+}
+$('b2d').onclick=()=>{P.show2d=!P.show2d;sync2DLayout();};
 function syncRayToggles(){
   document.querySelectorAll('.ray-toggle').forEach(el=>{
     el.classList.toggle('off', !P.rays[+el.dataset.r]);
@@ -473,11 +494,16 @@ scene.fog=new THREE.Fog(0xf5f5f5,80,220);
 {const pmrem=new THREE.PMREMGenerator(renderer);
  scene.environment=pmrem.fromScene(new RoomEnvironment(),0.04).texture;}
 const camera=new THREE.PerspectiveCamera(46,1,0.1,500);
-camera.position.set(2,18,48);
+// 重置采用更低的构图位置：让光具座落在画面下半部，物/镜/屏成为视觉焦点。
+const DEFAULT_VIEW={camera:[2,18.5,45.5],target:[0,9.2,0]};
+camera.position.set(...DEFAULT_VIEW.camera);
 const controls=new OrbitControls(camera,renderer.domElement);
-controls.target.set(0,6.4,0);
+controls.target.set(...DEFAULT_VIEW.target);
 controls.enableDamping=true; controls.maxPolarAngle=Math.PI*0.52; controls.minDistance=12; controls.maxDistance=110;
-$('bReset').onclick=()=>{camera.position.set(2,18,48);controls.target.set(0,6.4,0);};
+$('bReset').onclick=()=>{
+  camera.position.set(...DEFAULT_VIEW.camera); controls.target.set(...DEFAULT_VIEW.target);
+  controls.update();
+};
 
 const ambLight=new THREE.AmbientLight(0xffffff,.9);
 scene.add(ambLight);
@@ -805,8 +831,6 @@ objTex.colorSpace=THREE.SRGBColorSpace;
 let objCard, objStand;
 function buildObject(){
   objGroup.clear();
-  // 切换物体类型时重建发光图案，保留已创建的测量尺。
-  if(objGroup.userData.measureRuler)objGroup.add(objGroup.userData.measureRuler);
   paintCard(objCtx,256,360,false,0,false); objTex.needsUpdate=true;
   const matFace=new THREE.MeshBasicMaterial({map:objTex});
   const matSide=new THREE.MeshStandardMaterial({color:0xc5ccd6,roughness:.6});
@@ -963,91 +987,45 @@ function drawScreenTexture(){
   scrTex.needsUpdate=true; scrLensMap.needsUpdate=true;
 }
 
-/* 独立实物测量尺：真实厘米刻度，细分度 1 mm，物尺和像尺不改变光学参数。 */
-function rulerLabel(value){
-  const c=document.createElement('canvas');c.width=128;c.height=64;
-  const x=c.getContext('2d');x.font='bold 43px sans-serif';x.textAlign='center';
-  x.fillStyle='#1f2937';x.fillText(String(value),64,47);
-  const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;
-  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-    map:tex,transparent:true,depthWrite:false,depthTest:false
-  }));
-  sprite.scale.set(.94,.46,1);sprite.renderOrder=15;
-  return sprite;
-}
-function makeVerticalRuler(cmMax){
-  const g=new THREE.Group();
-  const face=new THREE.Mesh(new THREE.BoxGeometry(.5,cmMax+.3,.22),
-    new THREE.MeshBasicMaterial({color:0xf6edd5}));
-  face.position.y=cmMax/2;
-  g.add(face);
-  const pts=[];
-  for(let i=0;i<=Math.round(cmMax*10);i++){
-    const v=i/10, major=i%10===0, mid=i%5===0;
-    pts.push(new THREE.Vector3(-.19,v,.15),new THREE.Vector3(major?.26:(mid?.12:.01),v,.15));
-    if(major){
-      const lbl=rulerLabel(Math.round(v));
-      lbl.position.set(.86,v,.3);g.add(lbl);
-    }
-  }
-  const ticks=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
-    new THREE.LineBasicMaterial({color:0x1e293b,depthTest:false}));
-  ticks.renderOrder=14;g.add(ticks);
-  const zero=new THREE.Mesh(new THREE.BoxGeometry(.82,.06,.24),
-    new THREE.MeshBasicMaterial({color:0xf97316}));
-  zero.position.set(.17,0,.15);g.add(zero);
-  return g;
-}
-const objectRuler=makeVerticalRuler(6.0);
-const imageRuler=makeVerticalRuler(12.0);
-objGroup.add(objectRuler);
-objGroup.userData.measureRuler=objectRuler;
-scrGroup.add(imageRuler);
-let rulersShown=true;
-function layoutMeasurementRulers(){
-  const m=measuredHeights();
-  objectRuler.visible=rulersShown;
-  objectRuler.position.set(0,m.objectBottom,OBJ_W/2+1.12);
-  const screenFits=m.kind==='real' && m.imageHeight<=12 &&
-    m.imageBottom>=-6.2 && m.imageTop<=6.2 && uncoverFrac()>0;
-  imageRuler.visible=rulersShown&&screenFits;
-  if(screenFits)imageRuler.position.set(0,m.imageBottom,8.6/2+1.14);
-}
-$('bRulers').onclick=()=>{
-  rulersShown=!rulersShown;
-  $('bRulers').textContent=rulersShown?'📏 隐藏测量尺':'📏 显示测量尺';
-};
-function measurementReady(){
-  const a=measuredHeights(),{s}=sharpness();
-  if(a.kind!=='real')return {ok:false,why:'当前不是可由光屏承接的实像，请将物体移至焦距以外。',a};
-  if(P.cover>=1)return {ok:false,why:'透镜被完全遮挡，没有可测量的光屏像。',a};
-  if(s<.78)return {ok:false,why:'光屏尚未对焦。请先移动光屏，让像清晰后测量。',a};
-  if(a.imageHeight>12||a.imageBottom< -6.2||a.imageTop>6.2)
-    return {ok:false,why:'放大的像超出光屏测量范围。可以在「更多参数」中减小物体离轴高度，或适当增大物距后再测量。',a};
-  return {ok:true,why:'物尺和像尺的 0 刻度分别与图案下缘对齐；读取图案上缘刻度。',a};
-}
-const mCompare=$('bMeasureCompare'),mReference=$('measureReference');
-mCompare.onclick=()=>{
-  const q=measurementReady(),u=Number($('mObj').value),v=Number($('mImg').value);
-  if(!q.ok){$('measureResult').textContent=q.why;return;}
-  if(!$('mObj').value||!$('mImg').value||!Number.isFinite(u)||!Number.isFinite(v)||u<=0||v<=0){
-    $('measureResult').textContent='请先根据两把刻度尺分别填写物高和像高。';return;
-  }
-  const ratio=v/u,close=Math.abs(ratio-1)<.04;
-  const kind=close?'等大':ratio>1?'放大':'缩小';
-  const err=Math.abs(u-q.a.objectHeight)>.4 || Math.abs(v-q.a.imageHeight)>Math.max(.4,q.a.imageHeight*.1);
-  $('measureResult').textContent=`测量结果：${v.toFixed(1)} ÷ ${u.toFixed(1)} ≈ ${ratio.toFixed(2)}，判断为「${kind}」实像。${err?' 与模型尺寸有一定偏差，请核对刻度。':''}`;
-};
-$('bMeasureReveal').onclick=()=>{
-  mReference.hidden=!mReference.hidden;
-  $('bMeasureReveal').textContent=mReference.hidden?'查看参考值':'隐藏参考值';
+/* 一键物像高度计算。图案高度由绘制边界决定，像高按透镜横向放大率等比计算。 */
+let showMeasurement=false;
+$('bMeasureToggle').onclick=()=>{
+  showMeasurement=!showMeasurement;
+  $('measurementOutput').hidden=!showMeasurement;
+  $('bMeasureToggle').setAttribute('aria-expanded',String(showMeasurement));
+  $('measureChevron').textContent=showMeasurement?'收起 ▴':'展开 ▾';
+  if(showMeasurement)updateMeasurementUI();
 };
 function updateMeasurementUI(){
-  const q=measurementReady(),a=q.a;
-  $('measureState').textContent=q.why;
-  mCompare.disabled=!q.ok;
-  mReference.textContent=`当前模型参考：物高 ${a.objectHeight.toFixed(1)} cm`+
-    (a.kind==='real'?`，像高 ${a.imageHeight.toFixed(1)} cm，放大率 ${(a.imageHeight/a.objectHeight).toFixed(2)}。`:'；虚像不在光屏上测量。');
+  if(!showMeasurement)return;
+  const a=measuredHeights(), img=lensImage(),bright=uncoverFrac();
+  $('measuredObj').textContent=a.objectHeight.toFixed(2)+' cm';
+  const label=$('measuredImgLabel');
+  const out=$('measuredImg'), result=$('measureResult'), note=$('measureState');
+  if(img.kind==='none'||!Number.isFinite(img.m)){
+    label.textContent='像高 H′';
+    out.textContent='—';
+    result.textContent='物距等于焦距，出射光近似平行，有限距离没有像高可比较。';
+    note.textContent='可将物体移离焦点，比较放大、缩小或等大的情形。';
+    return;
+  }
+  const hi=Math.abs(img.m)*a.objectHeight;
+  label.textContent=img.kind==='virtual'?'虚像理论高度 H′':'像的理论高度 H′';
+  out.textContent=hi.toFixed(2)+' cm';
+  const ratio=hi/a.objectHeight;
+  const equal=Math.abs(ratio-1)<.001;
+  result.textContent=`H′ / H = ${ratio.toFixed(2)}，${equal?'等大':ratio>1?'放大':'缩小'} · ${img.kind==='real'?'倒立实像':'正立虚像'}`;
+  const info=[];
+  if(img.kind==='virtual')info.push('虚像不能在光屏上测量，此处显示理论像高。');
+  else{
+    const {s}=sharpness();
+    if(bright===0)info.push('透镜完全遮挡，光屏无像；显示的是未遮挡情况下的理论像高。');
+    else if(s<.78)info.push('光屏未对焦，当前为理论像高；移动光屏至清晰位置可观察。');
+    else if(a.imageHeight>12||a.imageBottom< -6.2||a.imageTop>6.2)info.push('实像超出光屏边界，显示的是完整像的理论高度。');
+    else info.push('光屏上的清晰实像高度与理论像高对应。');
+  }
+  info.push('H 为物体图案的真实高度，不等于“离轴高度 h”。');
+  note.textContent=info.join(' ');
 }
 /* 焦点 / 2F 标记：蓝色系，F 浅、2F 深，加大点与标签 */
 const COL_F='#7eb6ff', COL_2F='#1d4ed8';
@@ -1293,7 +1271,6 @@ function update3D(dt,t){
   lensMesh.scale.x=lensHalfThick();
   lensGlint.position.x=lensMesh.scale.x*0.9;
   layoutCoverCard();
-  layoutMeasurementRulers();
 }
 let markObjs=[];
 function buildMarksPos(s){
@@ -1331,8 +1308,8 @@ function draw2D(){
   const mag= (kind!=='none' && isFinite(m)) ? Math.abs(m) : 1;
   const hVis=h*2.05; // 2D 物体/像箭头加高，便于看清，3D 仍用真实 h
   const lensR2=LENS_R*1.5; // 2D 透镜上下高度为当前的 1.5 倍
-  const yNeed=Math.max(lensR2+3, Math.abs(hVis)+5, mag*Math.abs(hVis)+5, 14);
-  const padX=20, padY=72;
+  const yNeed=Math.max(lensR2+2.5, Math.abs(hVis)+3.3, mag*Math.abs(hVis)+3.3, 11.6);
+  const padX=26, padY=42;
   const pxPerCm=Math.min((W-2*padX)/(xR-xL), (H-padY)/(2*yNeed));
   const contentW=(xR-xL)*pxPerCm;
   const originX=(W-contentW)/2;
@@ -1560,7 +1537,8 @@ function tick(){
   }
   // 厚度变化重建透镜（节流）
   const wantF=fFromThick(P.thick);
-  syncLabels();updateInfo();update3D(dt,clock.elapsedTime);draw2D();
+  syncLabels();updateInfo();update3D(dt,clock.elapsedTime);
+  if(P.show2d)draw2D();
   controls.update();renderer.render(scene,camera);
 }
 function updateInfo(){
@@ -1586,7 +1564,7 @@ function updateInfo(){
   else if(P.cover>0 && kind==='real') $('blurHint').textContent=`通光面积 ${lit}% · 像保持完整，清晰度与亮度分别变化`;
   else $('blurHint').textContent=kind!=='real'?'虚像无法用光屏承接，把眼睛放在光屏一侧透过透镜观察':(s>.6?`光屏清晰度 ${pct}% · 对准了，像很锐利 ✓`:`光屏清晰度 ${pct}% · 前后移动光屏寻找清晰像（Δ=${d.toFixed(1)}cm）`);
 }
-applyTheme();resize3D();resize2D();syncLabels();tick();
+applyTheme();sync2DLayout();syncLabels();tick();
 </script>
 </body>
 </html>
