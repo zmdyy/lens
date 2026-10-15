@@ -342,9 +342,11 @@ function rayBlockedAtLens(y, R){ return y > yCutCm(R); }
 function uncoverFrac(){
   if(P.cover<=0) return 1;
   if(P.cover>=1) return 0;
-  const a=2*P.cover; // 被挡高度 / R
-  const cap=a*Math.acos(1-a)-(1-a)*Math.sqrt(Math.max(0,2*a-a*a));
-  return 1-cap/Math.PI;
+  const a=2*P.cover; // 被遮住的高度 / 半径，范围 0~2
+  // 圆形透镜的弓形面积：acos(1-a)-(1-a)*sqrt(2a-a²)。
+  // 原写法错误地再乘 a，75% 遮挡甚至得到负的通光面积。
+  const cap=Math.acos(1-a)-(1-a)*Math.sqrt(Math.max(0,2*a-a*a));
+  return Math.min(1,Math.max(0,1-cap/Math.PI));
 }
 function coverDimAlpha(){
   if(P.cover<=0) return 0;
